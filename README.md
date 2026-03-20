@@ -25,7 +25,7 @@ image2ascii version: image2ascii/1.0.0
 >> HomePage: https://github.com/qeesung/image2ascii
 >> Issue   : https://github.com/qeesung/image2ascii/issues
 >> Author  : qeesung
-Usage: image2ascii [-s] -f <filename> -r <ratio> -w <width> -g <height>
+Usage: image2ascii [-s] (-f <filename> | -v <video>) -r <ratio> -w <width> -g <height>
 
 Options:
   -c    Colored the ascii when output to the terminal (default true)
@@ -38,6 +38,10 @@ Options:
         Ratio to scale the image, ignored when use -w or -g (default 1)
   -s    Fit the terminal screen, ignored when use -w, -g, -r (default true)
   -t    Stretch the picture to overspread the screen
+  -v string
+	  Video filename to be convert and play in terminal
+  -video-fps float
+	  Video frame sample rate (frames per second) for extraction and playback (default 8)
   -w int
         Expected image width, -1 for image default width (default -1)
 ```
@@ -84,6 +88,32 @@ image2ascii -f docs/images/lufei.jpg -s=false
 convert the image reverse the chars
 ```bash
 image2ascii -f docs/images/lufei.jpg -i
+```
+
+convert and play a video in the terminal
+```bash
+image2ascii -v docs/videos/sample.mp4 -video-fps 8
+```
+
+Video mode requirements:
+- Python (`python3` or `python`) must be available in PATH.
+- ffmpeg must be available in PATH.
+- The app samples frames (instead of converting every frame), converts each frame to ASCII, and plays them in sequence in the terminal.
+- Video rendering is centered in the terminal with empty top/bottom/side padding.
+- If the terminal window is resized during playback, the next frames are automatically recentered and resized.
+- During playback, press `Ctrl+C` to stop immediately.
+- At the end of playback, you can run commands before replaying:
+	- `ENTER`: replay with current settings
+	- `tela`: show current detected terminal size (width x height)
+	- `fps <numero>`: change playback FPS (example: `fps 12`)
+	- `qualidade <0-100>`: change ASCII detail level (`0` = huge chars, around 4 chars wide; `100` = smallest chars / max detail)
+	- `cores BW`: black and white mode
+	- `cores Color`: colored mode
+	- `sair`: exit video mode
+
+macOS quick install:
+```bash
+brew install python ffmpeg
 ```
 
 ## Library usage
