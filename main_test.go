@@ -43,7 +43,7 @@ func TestParseArgsVideoFile(t *testing.T) {
 }
 
 func TestParseArgsAllParams(t *testing.T) {
-	cfg, err := parseArgs([]string{"video.mp4", "qualidade", "50", "fps", "15", "cor", "pb"})
+	cfg, err := parseArgs([]string{"video.mp4", "50", "15"})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -53,39 +53,39 @@ func TestParseArgsAllParams(t *testing.T) {
 	if cfg.fps != 15 {
 		t.Errorf("expected fps=15, got %f", cfg.fps)
 	}
-	if cfg.colored {
-		t.Error("expected colored=false for 'pb'")
-	}
 }
 
-func TestParseArgsColorido(t *testing.T) {
-	cfg, err := parseArgs([]string{"video.mp4", "cor", "colorido"})
+func TestParseArgsQualityOnly(t *testing.T) {
+	cfg, err := parseArgs([]string{"video.mp4", "80"})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !cfg.colored {
-		t.Error("expected colored=true for 'colorido'")
+	if cfg.quality != 80 {
+		t.Errorf("expected quality=80, got %d", cfg.quality)
+	}
+	if cfg.fps != defaultFPS {
+		t.Errorf("expected default fps, got %f", cfg.fps)
 	}
 }
 
 func TestParseArgsInvalidQuality(t *testing.T) {
-	_, err := parseArgs([]string{"video.mp4", "qualidade", "101"})
+	_, err := parseArgs([]string{"video.mp4", "101"})
 	if err == nil {
 		t.Error("expected error for quality > 100")
 	}
 }
 
 func TestParseArgsInvalidFPS(t *testing.T) {
-	_, err := parseArgs([]string{"video.mp4", "fps", "0"})
+	_, err := parseArgs([]string{"video.mp4", "70", "0"})
 	if err == nil {
 		t.Error("expected error for fps=0")
 	}
 }
 
-func TestParseArgsUnknownKeyword(t *testing.T) {
-	_, err := parseArgs([]string{"video.mp4", "unknown", "value"})
+func TestParseArgsInvalidQualityString(t *testing.T) {
+	_, err := parseArgs([]string{"video.mp4", "abc"})
 	if err == nil {
-		t.Error("expected error for unknown keyword")
+		t.Error("expected error for non-numeric quality")
 	}
 }
 

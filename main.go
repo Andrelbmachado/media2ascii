@@ -78,6 +78,9 @@ func main() {
 	fmt.Print(converter.ImageFile2ASCIIString(cfg.file, opts))
 }
 
+// parseArgs parses positional arguments:
+//
+//	media2ascii <arquivo> [qualidade] [fps]
 func parseArgs(args []string) (cliConfig, error) {
 	cfg := cliConfig{
 		quality: defaultQuality,
@@ -91,47 +94,20 @@ func parseArgs(args []string) (cliConfig, error) {
 	cfg.file = args[0]
 	cfg.isVideo = isVideoFile(cfg.file)
 
-	i := 1
-	for i < len(args) {
-		kw := strings.ToLower(args[i])
-		switch kw {
-		case "qualidade":
-			if i+1 >= len(args) {
-				return cfg, errors.New("qualidade: falta o valor (0-100)")
-			}
-			q, err := strconv.Atoi(args[i+1])
-			if err != nil || q < minQuality || q > maxQuality {
-				return cfg, errors.New("qualidade: use um número inteiro entre 0 e 100")
-			}
-			cfg.quality = q
-			i += 2
-		case "fps":
-			if i+1 >= len(args) {
-				return cfg, errors.New("fps: falta o valor")
-			}
-			f, err := strconv.ParseFloat(args[i+1], 64)
-			if err != nil || f <= 0 {
-				return cfg, errors.New("fps: use um número maior que 0")
-			}
-			cfg.fps = f
-			i += 2
-		case "cor", "cores":
-			if i+1 >= len(args) {
-				return cfg, errors.New("cor: falta o valor (pb ou colorido)")
-			}
-			val := strings.ToLower(args[i+1])
-			switch {
-			case val == "pb" || val == "bw" || strings.Contains(val, "preto") || strings.Contains(val, "black"):
-				cfg.colored = false
-			case strings.Contains(val, "color") || strings.Contains(val, "cor"):
-				cfg.colored = true
-			default:
-				return cfg, errors.New("cor: use 'pb' (preto e branco) ou 'colorido'")
-			}
-			i += 2
-		default:
-			return cfg, fmt.Errorf("argumento desconhecido: %s", args[i])
+	if len(args) >= 2 {
+		q, err := strconv.Atoi(args[1])
+		if err != nil || q < minQuality || q > maxQuality {
+			return cfg, fmt.Errorf("qualidade inválida '%s': use um número entre 0 e 100", args[1])
 		}
+		cfg.quality = q
+	}
+
+	if len(args) >= 3 {
+		f, err := strconv.ParseFloat(args[2], 64)
+		if err != nil || f <= 0 {
+			return cfg, fmt.Errorf("fps inválido '%s': use um número maior que 0", args[2])
+		}
+		cfg.fps = f
 	}
 
 	return cfg, nil
@@ -572,19 +548,18 @@ func usage() {
 	fmt.Fprintln(os.Stderr, `media2ascii - Converta imagens e vídeos em arte ASCII
 
 Uso:
-  media2ascii <arquivo> [qualidade <0-100>] [fps <n>] [cor <pb|colorido>]
+  media2ascii <arquivo> [qualidade] [fps]
 
 Exemplos:
   media2ascii video.mp4
-  media2ascii video.mp4 qualidade 70 fps 15 cor colorido
-  media2ascii video.mp4 qualidade 50 fps 8 cor pb
+  media2ascii video.mp4 70 10
+  media2ascii video.mp4 50 25
   media2ascii imagem.jpg
-  media2ascii imagem.png cor pb
+  media2ascii imagem.jpg 90
 
 Parâmetros:
-  qualidade  Qualidade de 0 (mínima) a 100 (máxima). Padrão: 70
+  qualidade  Número de 0 (mínima) a 100 (máxima). Padrão: 70
   fps        Frames por segundo para vídeo. Padrão: 8
-  cor        'colorido' para cores, 'pb' para preto e branco. Padrão: colorido
 
 Requisitos para vídeo:
   ffmpeg deve estar instalado (brew install ffmpeg)
