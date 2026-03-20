@@ -14,7 +14,17 @@
       "Bash(git add:*)",
       "Bash(git commit:*)",
       "Bash(git push:*)",
-      "Bash(git checkout:*)"
+      "Bash(git checkout:*)",
+      "Bash(npm whoami:*)",
+      "Bash(npm publish:*)",
+      "Bash(npm set:*)",
+      "Bash(npm view:*)",
+      "Bash(npm install:*)",
+      "Bash(npm audit:*)",
+      "Bash(chmod +x /Users/andremachado/Documents/Trabalho/Apps/Media2ASCII/media2ascii/npm/bin/media2ascii_darwin_amd64)",
+      "Bash(chmod +x /Users/andremachado/Documents/Trabalho/Apps/Media2ASCII/media2ascii/npm/bin/media2ascii_darwin_arm64)",
+      "Bash(go get:*)",
+      "Bash(./media2ascii \"/Users/andremachado/Desktop/0001-0205  .mp4\" 5 50 --export)"
     ]
   }
 }

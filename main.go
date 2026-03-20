@@ -6,6 +6,9 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"image"
+	"image/color"
+	"image/draw"
 	_ "image/jpeg"
 	"image/png"
 	"io"
@@ -23,6 +26,9 @@ import (
 
 	"github.com/Andrelbmachado/media2ascii/convert"
 	termaccess "github.com/Andrelbmachado/media2ascii/terminal"
+	"golang.org/x/image/font"
+	"golang.org/x/image/font/basicfont"
+	"golang.org/x/image/math/fixed"
 )
 
 const (
@@ -41,6 +47,7 @@ type cliConfig struct {
 	fps     float64
 	colored bool
 	isVideo bool
+	export  bool
 }
 
 type videoPlaybackSettings struct {
@@ -67,6 +74,13 @@ func main() {
 	converter := convert.NewImageConverter()
 
 	if cfg.isVideo {
+		if cfg.export {
+			if err := exportVideoAsASCII(converter, cfg); err != nil {
+				fmt.Fprintln(os.Stderr, err.Error())
+				os.Exit(1)
+			}
+			return
+		}
 		if err := playVideoAsASCII(converter, cfg); err != nil {
 			fmt.Fprintln(os.Stderr, err.Error())
 			os.Exit(1)
@@ -80,13 +94,24 @@ func main() {
 
 // parseArgs parses positional arguments:
 //
-//	media2ascii <arquivo> [fps] [qualidade]
+//	media2ascii <arquivo> [fps] [qualidade] [--export]
 func parseArgs(args []string) (cliConfig, error) {
 	cfg := cliConfig{
 		quality: defaultQuality,
 		fps:     defaultFPS,
 		colored: true,
 	}
+
+	// Extract --export flag from any position
+	filtered := args[:0]
+	for _, arg := range args {
+		if arg == "--export" || arg == "-export" {
+			cfg.export = true
+		} else {
+			filtered = append(filtered, arg)
+		}
+	}
+	args = filtered
 
 	if len(args) == 0 {
 		return cfg, errors.New("informe o arquivo de imagem ou vídeo")
@@ -544,22 +569,227 @@ func missingToolGuidance(tool string) string {
 	}
 }
 
+const (
+	fontCharW   = 7  // basicfont.Face7x13 char width
+	fontCharH   = 13 // basicfont.Face7x13 char height
+	fontAscent  = 11 // pixels above baseline
+	renderScale = 2  // upscale factor for readability
+)
+
+// coloredChar holds a rune and its foreground color parsed from ANSI codes.
+type coloredChar struct {
+	ch  rune
+	col color.RGBA
+}
+
+var ansiEscRegexp = regexp.MustCompile(`\x1b\[([0-9;]*)m`)
+
+// parseColoredLine splits a line with ANSI color codes into colored characters.
+func parseColoredLine(line string) []coloredChar {
+	white := color.RGBA{255, 255, 255, 255}
+	current := white
+	var result []coloredChar
+	for len(line) > 0 {
+		loc := ansiEscRegexp.FindStringIndex(line)
+		if loc == nil {
+			for _, ch := range line {
+				result = append(result, coloredChar{ch, current})
+			}
+			break
+		}
+		for _, ch := range line[:loc[0]] {
+			result = append(result, coloredChar{ch, current})
+		}
+		match := ansiEscRegexp.FindStringSubmatch(line[loc[0]:loc[1]])
+		if len(match) > 1 {
+			current = parseANSICode(match[1], current)
+		}
+		line = line[loc[1]:]
+	}
+	return result
+}
+
+// parseANSICode updates the current color based on ANSI escape code content.
+func parseANSICode(code string, current color.RGBA) color.RGBA {
+	white := color.RGBA{255, 255, 255, 255}
+	if code == "" || code == "0" {
+		return white
+	}
+	parts := strings.Split(code, ";")
+	nums := make([]int, 0, len(parts))
+	for _, p := range parts {
+		n, err := strconv.Atoi(p)
+		if err == nil {
+			nums = append(nums, n)
+		}
+	}
+	for i := 0; i < len(nums); i++ {
+		switch nums[i] {
+		case 0:
+			return white
+		case 38:
+			if i+4 < len(nums) && nums[i+1] == 2 {
+				return color.RGBA{R: uint8(nums[i+2]), G: uint8(nums[i+3]), B: uint8(nums[i+4]), A: 255}
+			}
+		}
+	}
+	return current
+}
+
+// renderFrameToImage converts an ASCII frame (with ANSI colors) to an RGBA image.
+func renderFrameToImage(asciiFrame string) *image.RGBA {
+	lines := strings.Split(strings.TrimRight(asciiFrame, "\n"), "\n")
+	parsed := make([][]coloredChar, len(lines))
+	maxCols := 0
+	for i, line := range lines {
+		parsed[i] = parseColoredLine(line)
+		if len(parsed[i]) > maxCols {
+			maxCols = len(parsed[i])
+		}
+	}
+	if maxCols == 0 {
+		maxCols = 1
+	}
+	numLines := len(lines)
+	if numLines == 0 {
+		numLines = 1
+	}
+
+	baseW := maxCols * fontCharW
+	baseH := numLines * fontCharH
+	base := image.NewRGBA(image.Rect(0, 0, baseW, baseH))
+	draw.Draw(base, base.Bounds(), image.Black, image.Point{}, draw.Src)
+
+	face := basicfont.Face7x13
+	for lineIdx, chars := range parsed {
+		x := 0
+		baseline := lineIdx*fontCharH + fontAscent
+		for _, cc := range chars {
+			d := &font.Drawer{
+				Dst:  base,
+				Src:  image.NewUniform(cc.col),
+				Face: face,
+				Dot:  fixed.P(x, baseline),
+			}
+			d.DrawString(string(cc.ch))
+			x += fontCharW
+		}
+	}
+
+	// Scale up for readability
+	scaledW := baseW * renderScale
+	scaledH := baseH * renderScale
+	scaled := image.NewRGBA(image.Rect(0, 0, scaledW, scaledH))
+	for y := 0; y < scaledH; y++ {
+		for x := 0; x < scaledW; x++ {
+			scaled.Set(x, y, base.At(x/renderScale, y/renderScale))
+		}
+	}
+	return scaled
+}
+
+func savePNG(img image.Image, path string) error {
+	f, err := os.Create(path)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	return png.Encode(f, img)
+}
+
+func createVideoFromFrames(framesDir, outputFile string, fps float64) error {
+	ffmpegBin, _ := exec.LookPath("ffmpeg")
+	inputPattern := filepath.Join(framesDir, "frame_%06d.png")
+	cmd := exec.Command(ffmpegBin,
+		"-y",
+		"-framerate", fmt.Sprintf("%g", fps),
+		"-i", inputPattern,
+		"-c:v", "libx264",
+		"-pix_fmt", "yuv420p",
+		"-preset", "fast",
+		outputFile,
+	)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("ffmpeg erro: %s", string(out))
+	}
+	return nil
+}
+
+func exportVideoAsASCII(converter *convert.ImageConverter, cfg cliConfig) error {
+	if _, err := exec.LookPath("ffmpeg"); err != nil {
+		return errors.New(missingToolGuidance("ffmpeg"))
+	}
+
+	videoDir := filepath.Dir(cfg.file)
+	videoBase := strings.TrimSuffix(filepath.Base(cfg.file), filepath.Ext(cfg.file))
+	framesDir := filepath.Join(videoDir, videoBase+"_ascii_frames")
+	outputMP4 := filepath.Join(videoDir, videoBase+"_ascii.mp4")
+
+	if err := os.MkdirAll(framesDir, 0755); err != nil {
+		return fmt.Errorf("erro ao criar diretório: %w", err)
+	}
+
+	opts := buildConvertOptions(cfg)
+	settings := videoPlaybackSettings{fps: cfg.fps, quality: cfg.quality, colored: true}
+	// Use a fixed virtual screen size for consistent export resolution
+	applyVideoSettingsForScreen(opts, settings, 200, 60)
+
+	frameCh, err := streamVideoFrames(cfg.file, settings.fps, opts)
+	if err != nil {
+		return err
+	}
+
+	fmt.Println("Exportando frames ASCII...")
+	frameIndex := 0
+	for frame := range frameCh {
+		// Save text frame
+		txtPath := filepath.Join(framesDir, fmt.Sprintf("frame_%06d.txt", frameIndex))
+		_ = os.WriteFile(txtPath, []byte(frame), 0644)
+
+		// Render and save PNG
+		img := renderFrameToImage(frame)
+		pngPath := filepath.Join(framesDir, fmt.Sprintf("frame_%06d.png", frameIndex))
+		if err := savePNG(img, pngPath); err != nil {
+			return err
+		}
+
+		frameIndex++
+		fmt.Printf("\rFrames processados: %d", frameIndex)
+	}
+	fmt.Printf("\rFrames processados: %d\n", frameIndex)
+
+	if frameIndex == 0 {
+		return errors.New("nenhum frame gerado")
+	}
+
+	fmt.Println("Gerando MP4...")
+	if err := createVideoFromFrames(framesDir, outputMP4, cfg.fps); err != nil {
+		return err
+	}
+
+	fmt.Printf("Vídeo ASCII salvo em: %s\n", outputMP4)
+	fmt.Printf("Frames de texto salvos em: %s\n", framesDir)
+	return nil
+}
+
 func usage() {
 	fmt.Fprintln(os.Stderr, `media2ascii - Converta imagens e vídeos em arte ASCII
 
 Uso:
-  media2ascii <arquivo> [fps] [qualidade]
+  media2ascii <arquivo> [fps] [qualidade] [--export]
 
 Exemplos:
   media2ascii video.mp4
   media2ascii video.mp4 10 70
-  media2ascii video.mp4 25 50
+  media2ascii video.mp4 10 70 --export
   media2ascii imagem.jpg
   media2ascii imagem.jpg 8 90
 
 Parâmetros:
   fps        Frames por segundo para vídeo. Padrão: 8
   qualidade  Número de 0 (mínima) a 100 (máxima). Padrão: 70
+  --export   Salva os frames em texto e gera um MP4 com a arte ASCII
 
 Requisitos para vídeo:
   ffmpeg deve estar instalado (brew install ffmpeg)
