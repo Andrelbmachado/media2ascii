@@ -28,7 +28,7 @@ import (
 const (
 	minQuality     = 0
 	maxQuality     = 100
-	defaultQuality = 70
+	defaultQuality = 100
 	defaultFPS     = 8.0
 )
 
@@ -363,7 +363,7 @@ func applyVideoSettingsForScreen(options *convert.Options, settings videoPlaybac
 
 	qualityRatio := float64(settings.quality) / 100
 	options.FixedWidth = scaleBetween(4, maxInt(4, screenWidth), qualityRatio)
-	options.FixedHeight = scaleBetween(2, maxInt(2, screenHeight), qualityRatio)
+	options.FixedHeight = scaleBetween(2, maxInt(2, int(math.Round(float64(screenHeight)*0.8))), qualityRatio)
 }
 
 func getTerminalSizeFallback(defaultWidth int, defaultHeight int) (int, int) {
@@ -420,7 +420,13 @@ func centerASCIIFrame(frameASCII string, screenWidth int, screenHeight int) stri
 		builder.WriteString("\n")
 	}
 
-	return builder.String()
+	result := builder.String()
+	// Remove the last newline to prevent the terminal from scrolling past the last row,
+	// which would cut the first line of the frame and leave an empty line at the bottom.
+	if len(result) > 0 && result[len(result)-1] == '\n' {
+		result = result[:len(result)-1]
+	}
+	return result
 }
 
 func visibleWidth(value string) int {
