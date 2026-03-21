@@ -48,6 +48,7 @@ type cliConfig struct {
 	colored bool
 	isVideo bool
 	export  bool
+	noAudio bool
 }
 
 type videoPlaybackSettings struct {
@@ -75,13 +76,13 @@ func main() {
 
 	if cfg.isVideo {
 		if cfg.export {
-			if err := exportVideoAsASCII(converter, cfg); err != nil {
+			if err := exportVideoAsASCII(cfg); err != nil {
 				fmt.Fprintln(os.Stderr, err.Error())
 				os.Exit(1)
 			}
 			return
 		}
-		if err := playVideoAsASCII(converter, cfg); err != nil {
+		if err := playVideoAsASCII(cfg); err != nil {
 			fmt.Fprintln(os.Stderr, err.Error())
 			os.Exit(1)
 		}
@@ -102,12 +103,15 @@ func parseArgs(args []string) (cliConfig, error) {
 		colored: true,
 	}
 
-	// Extract --export flag from any position
+	// Extract flags from any position
 	filtered := args[:0]
 	for _, arg := range args {
-		if arg == "--export" || arg == "-export" {
+		switch arg {
+		case "--export", "-export":
 			cfg.export = true
-		} else {
+		case "--no-audio", "-no-audio", "--mute", "-mute":
+			cfg.noAudio = true
+		default:
 			filtered = append(filtered, arg)
 		}
 	}
@@ -159,7 +163,7 @@ func buildConvertOptions(cfg cliConfig) *convert.Options {
 	}
 }
 
-func playVideoAsASCII(converter *convert.ImageConverter, cfg cliConfig) error {
+func playVideoAsASCII(cfg cliConfig) error {
 	ffmpegBin, err := exec.LookPath("ffmpeg")
 	if err != nil {
 		return errors.New(missingToolGuidance("ffmpeg"))
@@ -185,7 +189,11 @@ func playVideoAsASCII(converter *convert.ImageConverter, cfg cliConfig) error {
 		// Prepare audio in background (macOS: sets up pipe instantly;
 		// Windows: extracts WAV — runs concurrently with video startup).
 		audioCh := make(chan *audioPlayer, 1)
-		go func() { audioCh <- newAudioPlayer(cfg.file, ffmpegBin) }()
+		if cfg.noAudio {
+			audioCh <- nil
+		} else {
+			go func() { audioCh <- newAudioPlayer(cfg.file, ffmpegBin) }()
+		}
 
 		frameCh, err := streamVideoFrames(cfg.file, settings.fps, opts)
 		if err != nil {
@@ -736,7 +744,7 @@ func createVideoFromFrames(framesDir, outputFile string, fps float64) error {
 	return nil
 }
 
-func exportVideoAsASCII(converter *convert.ImageConverter, cfg cliConfig) error {
+func exportVideoAsASCII(cfg cliConfig) error {
 	if _, err := exec.LookPath("ffmpeg"); err != nil {
 		return errors.New(missingToolGuidance("ffmpeg"))
 	}
@@ -888,7 +896,8 @@ Exemplos:
 Parâmetros:
   fps        Frames por segundo para vídeo. Padrão: 8
   qualidade  Número de 0 (mínima) a 100 (máxima). Padrão: 70
-  --export   Salva os frames em texto e gera um MP4 com a arte ASCII
+  --export    Salva os frames em texto e gera um MP4 com a arte ASCII
+  --no-audio  Desativa o áudio durante a reprodução do vídeo
 
 Requisitos para vídeo:
   ffmpeg deve estar instalado (brew install ffmpeg)
