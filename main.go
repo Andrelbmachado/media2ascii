@@ -9,7 +9,6 @@ import (
 	_ "image/jpeg"
 	"image/png"
 	"io"
-	"math"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -339,9 +338,8 @@ func playFrames(frameCh <-chan string, interval time.Duration, out io.Writer, in
 		default:
 		}
 
-		centeredFrame := centerASCIIFrame(frame, screenWidth, screenHeight)
 		fmt.Fprint(out, "\033[H\033[2J")
-		fmt.Fprint(out, centeredFrame)
+		fmt.Fprint(out, frame)
 
 		timer := time.NewTimer(interval)
 		select {
@@ -358,12 +356,10 @@ func applyVideoSettingsForScreen(options *convert.Options, settings videoPlaybac
 	options.Colored = settings.colored
 	options.Reversed = false
 	options.Ratio = 1
-	options.FitScreen = false
+	options.FitScreen = true
 	options.StretchedScreen = false
-
-	qualityRatio := float64(settings.quality) / 100
-	options.FixedWidth = scaleBetween(4, maxInt(4, screenWidth), qualityRatio)
-	options.FixedHeight = scaleBetween(2, maxInt(2, screenHeight), qualityRatio)
+	options.FixedWidth = -1
+	options.FixedHeight = -1
 }
 
 func getTerminalSizeFallback(defaultWidth int, defaultHeight int) (int, int) {
@@ -375,63 +371,11 @@ func getTerminalSizeFallback(defaultWidth int, defaultHeight int) (int, int) {
 	return width, height
 }
 
-func scaleBetween(minimum int, maximum int, ratio float64) int {
-	if maximum <= minimum {
-		return minimum
-	}
-	clamped := math.Min(math.Max(ratio, 0), 1)
-	return minimum + int(math.Round(float64(maximum-minimum)*clamped))
-}
-
 func maxInt(a int, b int) int {
 	if a > b {
 		return a
 	}
 	return b
-}
-
-func centerASCIIFrame(frameASCII string, screenWidth int, screenHeight int) string {
-	trimmed := strings.TrimRight(frameASCII, "\n")
-	frameLines := []string{""}
-	if trimmed != "" {
-		frameLines = strings.Split(trimmed, "\n")
-	}
-
-	frameHeight := len(frameLines)
-	padTop := maxInt((screenHeight-frameHeight)/2, 0)
-	padBottom := maxInt(screenHeight-padTop-frameHeight, 0)
-
-	var builder strings.Builder
-	for i := 0; i < padTop; i++ {
-		builder.WriteString("\n")
-	}
-
-	for _, line := range frameLines {
-		lineWidth := visibleWidth(line)
-		padLeft := maxInt((screenWidth-lineWidth)/2, 0)
-		padRight := maxInt(screenWidth-padLeft-lineWidth, 0)
-		builder.WriteString(strings.Repeat(" ", padLeft))
-		builder.WriteString(line)
-		builder.WriteString(strings.Repeat(" ", padRight))
-		builder.WriteString("\n")
-	}
-
-	for i := 0; i < padBottom; i++ {
-		builder.WriteString("\n")
-	}
-
-	result := builder.String()
-	// Remove the last newline to prevent the terminal from scrolling past the last row,
-	// which would cut the first line of the frame and leave an empty line at the bottom.
-	if len(result) > 0 && result[len(result)-1] == '\n' {
-		result = result[:len(result)-1]
-	}
-	return result
-}
-
-func visibleWidth(value string) int {
-	plain := ansiSequenceRegexp.ReplaceAllString(value, "")
-	return len([]rune(plain))
 }
 
 func askPlaybackAction(in io.Reader, out io.Writer, current videoPlaybackSettings) (videoPlaybackSettings, bool, bool) {
