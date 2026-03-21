@@ -551,7 +551,7 @@ func applyVideoSettingsForScreen(options *convert.Options, settings videoPlaybac
 
 	qualityRatio := float64(settings.quality) / 100
 	options.FixedWidth = scaleBetween(4, maxInt(4, screenWidth-2), qualityRatio)
-	options.FixedHeight = scaleBetween(2, maxInt(2, screenHeight-2), qualityRatio)
+	options.FixedHeight = -1 // let the converter compute char-aspect-corrected height
 }
 
 func getTerminalSizeFallback(defaultWidth int, defaultHeight int) (int, int) {
@@ -962,21 +962,21 @@ func newAudioPlayer(videoFile, ffmpegBin string) *audioPlayer {
 	return nil
 }
 
-// newDarwinAudioPlayer pipes ffmpeg audio output directly into afplay (built-in).
-// No temp file needed — returns immediately without blocking.
+// newDarwinAudioPlayer extracts audio to a temp WAV file using ffmpeg,
+// then plays it via afplay (built-in macOS audio player).
 func newDarwinAudioPlayer(videoFile, ffmpegBin string) *audioPlayer {
-	ffmpegCmd := exec.Command(ffmpegBin,
-		"-hide_banner", "-loglevel", "error",
+	tmpFile := filepath.Join(os.TempDir(), fmt.Sprintf("m2a_audio_%d.wav", os.Getpid()))
+	extractCmd := exec.Command(ffmpegBin,
+		"-y", "-hide_banner", "-loglevel", "error",
 		"-i", videoFile,
-		"-vn", "-f", "wav", "pipe:1",
+		"-vn", "-acodec", "pcm_s16le", "-ar", "44100", "-ac", "2",
+		tmpFile,
 	)
-	stdout, err := ffmpegCmd.StdoutPipe()
-	if err != nil {
+	if err := extractCmd.Run(); err != nil {
 		return nil
 	}
-	afplayCmd := exec.Command("afplay", "-")
-	afplayCmd.Stdin = stdout
-	return &audioPlayer{cmds: []*exec.Cmd{ffmpegCmd, afplayCmd}}
+	afplayCmd := exec.Command("afplay", tmpFile)
+	return &audioPlayer{cmds: []*exec.Cmd{afplayCmd}, tmpFile: tmpFile}
 }
 
 // newWindowsAudioPlayer extracts audio to a temp WAV file using ffmpeg,

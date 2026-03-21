@@ -24,9 +24,10 @@ func TestScaleImageWithFixedHeight(t *testing.T) {
 
 	scaledImage := handler.ScaleImage(img, &options)
 	sz := scaledImage.Bounds()
-	oldSz := img.Bounds()
 	assertions.Equal(100, sz.Max.Y, "scaled image height should be 100")
-	assertions.Equal(oldSz.Max.X, sz.Max.X, "scaled image width should be changed")
+	// width is computed to maintain aspect ratio with char correction (charWidth=0.5):
+	// width = round(2000 * 100/1500 / 0.5) = 267
+	assertions.Equal(267, sz.Max.X, "scaled image width should be char-aspect-corrected")
 }
 
 // TestScaleImageWithFixedWidth test scale the image by fixed width
@@ -44,9 +45,10 @@ func TestScaleImageWithFixedWidth(t *testing.T) {
 
 	scaledImage := handler.ScaleImage(img, &options)
 	sz := scaledImage.Bounds()
-	oldSz := img.Bounds()
-	assertions.Equal(oldSz.Max.Y, sz.Max.Y, "scaled image height should be changed")
 	assertions.Equal(200, sz.Max.X, "scaled image width should be 200")
+	// height is computed to maintain aspect ratio with char correction (charWidth=0.5):
+	// height = round(1500 * 200/2000 * 0.5) = 75
+	assertions.Equal(75, sz.Max.Y, "scaled image height should be char-aspect-corrected")
 }
 
 // TestScaleImageWithFixedWidthHeight test scale the image by fixed width
