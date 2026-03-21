@@ -542,7 +542,7 @@ func playFrames(frameCh <-chan string, interval time.Duration, out io.Writer, in
 	return playResultFinished
 }
 
-func applyVideoSettingsForScreen(options *convert.Options, settings videoPlaybackSettings, screenWidth int, screenHeight int) {
+func applyVideoSettingsForScreen(options *convert.Options, settings videoPlaybackSettings, screenWidth int, _ int) {
 	options.Colored = settings.colored
 	options.Reversed = false
 	options.Ratio = 1
