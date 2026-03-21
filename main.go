@@ -12,7 +12,6 @@ import (
 	_ "image/jpeg"
 	"image/png"
 	"io"
-	"math"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -20,6 +19,7 @@ import (
 	"regexp"
 	"runtime"
 	"strconv"
+	"math"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -40,8 +40,8 @@ const (
 	defaultFPS     = 30.0
 )
 
-var ansiSequenceRegexp = regexp.MustCompile(`\x1b\[[0-9;]*m`)
 var convertDefaultOptions = convert.DefaultOptions
+var ansiSequenceRegexp = regexp.MustCompile(`\x1b\[[0-9;]*m`)
 
 type cliConfig struct {
 	file    string
@@ -515,6 +515,7 @@ const (
 )
 
 func playFrames(frameCh <-chan string, interval time.Duration, out io.Writer, interrupt <-chan os.Signal, pause <-chan struct{}, screenWidth, screenHeight int) playResult {
+	buf := bufio.NewWriterSize(out, 4<<20)
 	for frame := range frameCh {
 		select {
 		case <-interrupt:
@@ -524,9 +525,14 @@ func playFrames(frameCh <-chan string, interval time.Duration, out io.Writer, in
 		default:
 		}
 
-		centeredFrame := centerASCIIFrame(frame, screenWidth, screenHeight)
-		fmt.Fprint(out, "\033[H\033[2J")
-		fmt.Fprint(out, centeredFrame)
+		// Trim trailing newlines: if the frame fills the terminal height, the
+		// final \n scrolls the terminal one line each frame, causing the video
+		// to drift off-screen over time.
+		frame = strings.TrimRight(frame, "\n")
+
+		buf.WriteString("\033[H\033[2J")
+		buf.WriteString(frame)
+		buf.Flush()
 
 		timer := time.NewTimer(interval)
 		select {
@@ -546,21 +552,20 @@ func applyVideoSettingsForScreen(options *convert.Options, settings videoPlaybac
 	options.Colored = settings.colored
 	options.Reversed = false
 	options.Ratio = 1
-	options.FitScreen = false
-	options.StretchedScreen = false
-
-	qualityRatio := float64(settings.quality) / 100
-	options.FixedWidth = scaleBetween(4, maxInt(4, screenWidth), qualityRatio)
-	options.FixedHeight = scaleBetween(2, maxInt(2, screenHeight), qualityRatio)
-}
-
-func getTerminalSizeFallback(defaultWidth int, defaultHeight int) (int, int) {
-	accessor := termaccess.NewTerminalAccessor()
-	width, height, err := accessor.ScreenSize()
-	if err != nil || width <= 0 || height <= 0 {
-		return defaultWidth, defaultHeight
+	if settings.quality == maxQuality {
+		// Quality 100: stretch to fill the entire terminal — no borders
+		options.FitScreen = false
+		options.StretchedScreen = true
+		options.FixedWidth = -1
+		options.FixedHeight = -1
+	} else {
+		// Quality < 100: proportional fit within quality-scaled max bounds
+		options.FitScreen = false
+		options.StretchedScreen = false
+		qualityRatio := float64(settings.quality) / 100
+		options.FixedWidth = scaleBetween(4, maxInt(4, screenWidth-2), qualityRatio)
+		options.FixedHeight = scaleBetween(2, maxInt(2, screenHeight-2), qualityRatio)
 	}
-	return width, height
 }
 
 func scaleBetween(minimum int, maximum int, ratio float64) int {
@@ -569,13 +574,6 @@ func scaleBetween(minimum int, maximum int, ratio float64) int {
 	}
 	clamped := math.Min(math.Max(ratio, 0), 1)
 	return minimum + int(math.Round(float64(maximum-minimum)*clamped))
-}
-
-func maxInt(a int, b int) int {
-	if a > b {
-		return a
-	}
-	return b
 }
 
 func centerASCIIFrame(frameASCII string, screenWidth int, screenHeight int) string {
@@ -593,7 +591,6 @@ func centerASCIIFrame(frameASCII string, screenWidth int, screenHeight int) stri
 	for i := 0; i < padTop; i++ {
 		builder.WriteString("\n")
 	}
-
 	for _, line := range frameLines {
 		lineWidth := visibleWidth(line)
 		padLeft := maxInt((screenWidth-lineWidth)/2, 0)
@@ -603,22 +600,33 @@ func centerASCIIFrame(frameASCII string, screenWidth int, screenHeight int) stri
 		builder.WriteString(strings.Repeat(" ", padRight))
 		builder.WriteString("\n")
 	}
-
 	for i := 0; i < padBottom; i++ {
 		builder.WriteString("\n")
 	}
-
-	result := builder.String()
-	if len(result) > 0 && result[len(result)-1] == '\n' {
-		result = result[:len(result)-1]
-	}
-	return result
+	return builder.String()
 }
 
 func visibleWidth(value string) int {
 	plain := ansiSequenceRegexp.ReplaceAllString(value, "")
 	return len([]rune(plain))
 }
+
+func getTerminalSizeFallback(defaultWidth int, defaultHeight int) (int, int) {
+	accessor := termaccess.NewTerminalAccessor()
+	width, height, err := accessor.ScreenSize()
+	if err != nil || width <= 0 || height <= 0 {
+		return defaultWidth, defaultHeight
+	}
+	return width, height
+}
+
+func maxInt(a int, b int) int {
+	if a > b {
+		return a
+	}
+	return b
+}
+
 
 func askPlaybackAction(in io.Reader, out io.Writer, current videoPlaybackSettings) (videoPlaybackSettings, bool, bool) {
 	reader := bufio.NewReader(in)
