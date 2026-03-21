@@ -34,8 +34,8 @@ import (
 const (
 	minQuality     = 0
 	maxQuality     = 100
-	defaultQuality = 70
-	defaultFPS     = 8.0
+	defaultQuality = 100
+	defaultFPS     = 30.0
 )
 
 var ansiSequenceRegexp = regexp.MustCompile(`\x1b\[[0-9;]*m`)
@@ -55,6 +55,7 @@ type videoPlaybackSettings struct {
 	fps     float64
 	quality int
 	colored bool
+	audio   bool
 }
 
 func main() {
@@ -95,7 +96,7 @@ func main() {
 
 // parseArgs parses positional arguments:
 //
-//	media2ascii <arquivo> [fps] [qualidade] [--export]
+//	media2ascii <arquivo> [qualidade] [fps] [cores] [audio] [--export]
 func parseArgs(args []string) (cliConfig, error) {
 	cfg := cliConfig{
 		quality: defaultQuality,
@@ -123,20 +124,46 @@ func parseArgs(args []string) (cliConfig, error) {
 	cfg.file = args[0]
 	cfg.isVideo = isVideoFile(cfg.file)
 
+	// args[1] = qualidade
 	if len(args) >= 2 {
-		f, err := strconv.ParseFloat(args[1], 64)
+		q, err := strconv.Atoi(args[1])
+		if err != nil || q < minQuality || q > maxQuality {
+			return cfg, fmt.Errorf("qualidade inválida '%s': use um número entre 0 e 100", args[1])
+		}
+		cfg.quality = q
+	}
+
+	// args[2] = fps
+	if len(args) >= 3 {
+		f, err := strconv.ParseFloat(args[2], 64)
 		if err != nil || f <= 0 {
-			return cfg, fmt.Errorf("fps inválido '%s': use um número maior que 0", args[1])
+			return cfg, fmt.Errorf("fps inválido '%s': use um número maior que 0", args[2])
 		}
 		cfg.fps = f
 	}
 
-	if len(args) >= 3 {
-		q, err := strconv.Atoi(args[2])
-		if err != nil || q < minQuality || q > maxQuality {
-			return cfg, fmt.Errorf("qualidade inválida '%s': use um número entre 0 e 100", args[2])
+	// args[3] = cores (Color/BW)
+	if len(args) >= 4 {
+		switch strings.ToLower(args[3]) {
+		case "color", "colorido", "cor":
+			cfg.colored = true
+		case "bw", "pb", "preto":
+			cfg.colored = false
+		default:
+			return cfg, fmt.Errorf("cores inválido '%s': use Color ou BW", args[3])
 		}
-		cfg.quality = q
+	}
+
+	// args[4] = audio (ON/OFF)
+	if len(args) >= 5 {
+		switch strings.ToLower(args[4]) {
+		case "on", "sim", "yes":
+			cfg.noAudio = false
+		case "off", "nao", "não", "no":
+			cfg.noAudio = true
+		default:
+			return cfg, fmt.Errorf("audio inválido '%s': use ON ou OFF", args[4])
+		}
 	}
 
 	return cfg, nil
@@ -173,6 +200,7 @@ func playVideoAsASCII(cfg cliConfig) error {
 		fps:     cfg.fps,
 		quality: cfg.quality,
 		colored: cfg.colored,
+		audio:   !cfg.noAudio,
 	}
 
 	interruptChannel := make(chan os.Signal, 1)
@@ -189,7 +217,7 @@ func playVideoAsASCII(cfg cliConfig) error {
 		// Prepare audio in background (macOS: sets up pipe instantly;
 		// Windows: extracts WAV — runs concurrently with video startup).
 		audioCh := make(chan *audioPlayer, 1)
-		if cfg.noAudio {
+		if !settings.audio {
 			audioCh <- nil
 		} else {
 			go func() { audioCh <- newAudioPlayer(cfg.file, ffmpegBin) }()
@@ -485,20 +513,15 @@ func askPlaybackAction(in io.Reader, out io.Writer, current videoPlaybackSetting
 	reader := bufio.NewReader(in)
 	for {
 		fmt.Fprintf(out,
-			"\nENTER=replay | sair=stop | tela | fps <n> | qualidade <0-100> | cores <BW|Color> (atual: fps=%.2f, qualidade=%d, cores=%s): ",
-			current.fps,
+			"\nReplay = ENTER | Sair = Q | Qualidade = 0->100 | FPS = 0->30 | Cores = BW or Color | Audio = ON or OFF  [qualidade=%d fps=%.0f cores=%s audio=%s]: ",
 			current.quality,
+			current.fps,
 			colorModeLabel(current.colored),
+			audioLabel(current.audio),
 		)
 		line, err := reader.ReadString('\n')
 		if err != nil {
 			return current, false, true
-		}
-
-		if isShowScreenSizeCommand(line) {
-			screenWidth, screenHeight := getTerminalSizeFallback(120, 40)
-			fmt.Fprintf(out, "tela atual: %dx%d\n", screenWidth, screenHeight)
-			continue
 		}
 
 		next, replay, quit, parseErr := parsePlaybackCommand(line, current)
@@ -523,22 +546,9 @@ func parsePlaybackCommand(input string, current videoPlaybackSettings) (videoPla
 	}
 
 	lower := strings.ToLower(trimmed)
-	if lower == "sair" || lower == "quit" || lower == "exit" || lower == "stop" {
-		return current, false, true, nil
-	}
 
-	if strings.HasPrefix(lower, "fps") {
-		parts := strings.Fields(lower)
-		if len(parts) != 2 {
-			return current, false, false, errors.New("use: fps <numero>")
-		}
-		fpsValue, err := strconv.ParseFloat(parts[1], 64)
-		if err != nil || fpsValue <= 0 {
-			return current, false, false, errors.New("fps invalido: use numero maior que 0")
-		}
-		updated := current
-		updated.fps = fpsValue
-		return updated, true, false, nil
+	if lower == "q" || lower == "quit" || lower == "exit" || lower == "sair" || lower == "stop" {
+		return current, false, true, nil
 	}
 
 	if strings.HasPrefix(lower, "qualidade") {
@@ -546,39 +556,58 @@ func parsePlaybackCommand(input string, current videoPlaybackSettings) (videoPla
 		if len(parts) != 2 {
 			return current, false, false, errors.New("use: qualidade <0-100>")
 		}
-		qualityValue, err := strconv.Atoi(parts[1])
-		if err != nil || qualityValue < minQuality || qualityValue > maxQuality {
-			return current, false, false, errors.New("qualidade invalida: use inteiro entre 0 e 100")
+		v, err := strconv.Atoi(parts[1])
+		if err != nil || v < minQuality || v > maxQuality {
+			return current, false, false, errors.New("qualidade inválida: use inteiro entre 0 e 100")
 		}
 		updated := current
-		updated.quality = qualityValue
+		updated.quality = v
+		return updated, true, false, nil
+	}
+
+	if strings.HasPrefix(lower, "fps") {
+		parts := strings.Fields(lower)
+		if len(parts) != 2 {
+			return current, false, false, errors.New("use: fps <numero>")
+		}
+		v, err := strconv.ParseFloat(parts[1], 64)
+		if err != nil || v <= 0 {
+			return current, false, false, errors.New("fps inválido: use número maior que 0")
+		}
+		updated := current
+		updated.fps = v
 		return updated, true, false, nil
 	}
 
 	if strings.HasPrefix(lower, "cores") {
-		value := strings.TrimSpace(trimmed[len("cores"):])
-		valueLower := strings.ToLower(value)
-		if valueLower == "" {
+		val := strings.ToLower(strings.TrimSpace(trimmed[len("cores"):]))
+		updated := current
+		switch {
+		case val == "bw" || val == "pb":
+			updated.colored = false
+		case val == "color" || val == "color":
+			updated.colored = true
+		default:
 			return current, false, false, errors.New("use: cores BW ou cores Color")
 		}
-		updated := current
-		if strings.Contains(valueLower, "bw") || strings.Contains(valueLower, "black") || strings.Contains(valueLower, "preto") {
-			updated.colored = false
-			return updated, true, false, nil
-		}
-		if strings.Contains(valueLower, "color") || strings.Contains(valueLower, "cor") {
-			updated.colored = true
-			return updated, true, false, nil
-		}
-		return current, false, false, errors.New("valor de cores invalido: use BW ou Color")
+		return updated, true, false, nil
 	}
 
-	return current, false, false, errors.New("comando invalido. Use ENTER, sair, tela, fps <n>, qualidade <0-100>, cores <BW|Color>")
-}
+	if strings.HasPrefix(lower, "audio") {
+		val := strings.ToLower(strings.TrimSpace(trimmed[len("audio"):]))
+		updated := current
+		switch val {
+		case "on", "sim", "yes":
+			updated.audio = true
+		case "off", "nao", "não", "no":
+			updated.audio = false
+		default:
+			return current, false, false, errors.New("use: audio ON ou audio OFF")
+		}
+		return updated, true, false, nil
+	}
 
-func isShowScreenSizeCommand(input string) bool {
-	value := strings.ToLower(strings.TrimSpace(input))
-	return value == "tela" || value == "size"
+	return current, false, false, errors.New("comando inválido. Use ENTER, Q, qualidade <n>, fps <n>, cores <BW|Color>, audio <ON|OFF>")
 }
 
 func colorModeLabel(colored bool) string {
@@ -586,6 +615,13 @@ func colorModeLabel(colored bool) string {
 		return "Color"
 	}
 	return "BW"
+}
+
+func audioLabel(audio bool) string {
+	if audio {
+		return "ON"
+	}
+	return "OFF"
 }
 
 func missingToolGuidance(tool string) string {
@@ -884,29 +920,29 @@ func usage() {
 	fmt.Fprintln(os.Stderr, `media2ascii - Converta imagens e vídeos em arte ASCII
 
 Uso:
-  media2ascii <arquivo> [fps] [qualidade] [--export]
+  media2ascii <arquivo> [qualidade] [fps] [cores] [audio] [--export]
 
 Exemplos:
   media2ascii video.mp4
-  media2ascii video.mp4 10 70
-  media2ascii video.mp4 10 70 --export
+  media2ascii video.mp4 100 30
+  media2ascii video.mp4 100 30 Color ON
+  media2ascii video.mp4 100 30 BW OFF --export
   media2ascii imagem.jpg
-  media2ascii imagem.jpg 8 90
 
 Parâmetros:
-  fps        Frames por segundo para vídeo. Padrão: 8
-  qualidade  Número de 0 (mínima) a 100 (máxima). Padrão: 70
-  --export    Salva os frames em texto e gera um MP4 com a arte ASCII
-  --no-audio  Desativa o áudio durante a reprodução do vídeo
-
-Requisitos para vídeo:
-  ffmpeg deve estar instalado (brew install ffmpeg)
+  qualidade  0 a 100. Padrão: 100
+  fps        Frames por segundo. Padrão: 30
+  cores      Color ou BW. Padrão: Color
+  audio      ON ou OFF. Padrão: ON
+  --export   Salva os frames em texto e gera um MP4 com a arte ASCII
+  --no-audio Atalho para audio OFF
 
 Durante a reprodução:
-  Ctrl+C             Parar imediatamente
-  ENTER              Replay
-  fps <n>            Alterar FPS
-  qualidade <0-100>  Alterar qualidade
-  cores BW|Color     Alterar modo de cores
-  sair               Sair`)
+  ENTER                  Replay
+  Q                      Sair
+  qualidade <0-100>      Alterar qualidade
+  fps <0-30>             Alterar FPS
+  cores <BW|Color>       Alterar cores
+  audio <ON|OFF>         Ligar/desligar áudio
+  Ctrl+C                 Parar imediatamente`)
 }
