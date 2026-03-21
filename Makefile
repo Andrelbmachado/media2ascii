@@ -1,5 +1,5 @@
 BINARY   = media2ascii
-VERSION  = v1.1.0
+VERSION  = v2.0.0
 DIST_DIR = dist
 NPM_BIN  = npm/bin
 

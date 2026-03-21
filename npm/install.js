@@ -7,7 +7,7 @@ const { execSync } = require("child_process");
 const os = require("os");
 const zlib = require("zlib");
 
-const VERSION = "v1.1.0";
+const VERSION = "v2.0.0";
 const REPO = "Andrelbmachado/media2ascii";
 const BIN_DIR = path.join(__dirname, "bin");
 

@@ -1,3 +1,18 @@
+// media2ascii v2.0.0 — versão estável e funcional.
+//
+// Novidades da v2.0 em relação à v1.x:
+//   - Suporte a áudio durante a reprodução de vídeo (macOS via afplay, Windows via PowerShell)
+//   - Correção do efeito de dessincronização de linhas causado pelo modo raw do terminal (\n → \r\n)
+//   - Vídeo centralizado vertical e horizontalmente no terminal em cada frame
+//   - Reprodução proporcional correta usando FitScreen (sem distorção ou esticamento)
+//   - Pausa com barra de espaço durante a reprodução
+//   - Controle interativo pós-reprodução: qualidade, fps, cores, áudio
+//   - Suporte a Windows (binários x64/arm64, extração de áudio WAV)
+//   - Suporte a --export: salva frames ASCII em texto e gera MP4
+//
+// Esta versão é a base de referência. Qualquer regressão deve ser
+// comparada com o comportamento documentado aqui.
+
 package main
 
 import (
