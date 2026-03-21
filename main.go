@@ -525,8 +525,8 @@ func playFrames(frameCh <-chan string, interval time.Duration, out io.Writer, in
 		default:
 		}
 
-		// In raw mode OPOST is disabled, so \n is bare LF (no carriage return).
-		// Replace \n with \r\n so each line starts at column 1.
+		// Center the frame in the terminal, then fix newlines for raw mode.
+		frame = centerASCIIFrame(frame, screenWidth, screenHeight)
 		frame = strings.TrimRight(frame, "\n")
 		frame = strings.ReplaceAll(frame, "\n", "\r\n")
 
