@@ -51,7 +51,9 @@ func TestScaleImageWithFixedWidth(t *testing.T) {
 	assertions.Equal(75, sz.Max.Y, "scaled image height should be char-aspect-corrected")
 }
 
-// TestScaleImageWithFixedWidthHeight test scale the image by fixed width
+// TestScaleImageWithFixedWidthHeight tests proportional fit within both max dimensions.
+// cat_2000x1500 (4:3), FixedWidth=200, FixedHeight=100, charWidth=0.5:
+//   hFromW = round(1500 * 200/2000 * 0.5) = 75 <= 100 → width-constrained → 200×75
 func TestScaleImageWithFixedWidthHeight(t *testing.T) {
 	handler := NewResizeHandler()
 	assertions := assert.New(t)
@@ -67,8 +69,8 @@ func TestScaleImageWithFixedWidthHeight(t *testing.T) {
 
 	scaledImage := handler.ScaleImage(img, &options)
 	sz := scaledImage.Bounds()
-	assertions.Equal(100, sz.Max.Y, "scaled image height should be 100")
-	assertions.Equal(200, sz.Max.X, "scaled image width should be 200")
+	assertions.Equal(75, sz.Max.Y, "scaled image height should be proportional (75)")
+	assertions.Equal(200, sz.Max.X, "scaled image width should be 200 (width-constrained)")
 }
 
 // TestScaleImageByRatio test scale image by ratio
@@ -214,7 +216,7 @@ func ExampleImageResizeHandler_ScaleImage() {
 	scaledImage := handler.ScaleImage(img, &options)
 	sz := scaledImage.Bounds()
 	fmt.Print(sz.Max.X, sz.Max.Y)
-	// output: 200 100
+	// output: 200 75
 }
 
 // BenchmarkScaleImage benchmark scale big image

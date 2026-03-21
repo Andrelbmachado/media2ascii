@@ -189,8 +189,8 @@ func TestApplyVideoSettingsForScreen(t *testing.T) {
 	if opt.FixedWidth != 4 {
 		t.Errorf("expected FixedWidth=4, got %d", opt.FixedWidth)
 	}
-	if opt.FixedHeight != -1 {
-		t.Errorf("expected FixedHeight=-1 (auto), got %d", opt.FixedHeight)
+	if opt.FixedHeight != 2 {
+		t.Errorf("expected FixedHeight=2, got %d", opt.FixedHeight)
 	}
 	if opt.Colored {
 		t.Error("expected Colored=false")
@@ -202,8 +202,8 @@ func TestApplyVideoSettingsForScreen(t *testing.T) {
 	if opt.FixedWidth != 118 {
 		t.Errorf("expected FixedWidth=118, got %d", opt.FixedWidth)
 	}
-	if opt.FixedHeight != -1 {
-		t.Errorf("expected FixedHeight=-1 (auto), got %d", opt.FixedHeight)
+	if opt.FixedHeight != 38 {
+		t.Errorf("expected FixedHeight=38, got %d", opt.FixedHeight)
 	}
 	if !opt.Colored {
 		t.Error("expected Colored=true")

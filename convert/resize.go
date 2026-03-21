@@ -32,9 +32,27 @@ func initResizeResolver(handler *ImageResizeHandler) {
 			hasH := options.FixedHeight != -1
 
 			if hasW && hasH {
-				// Both set: exact dimensions (no aspect-ratio correction)
-				width = options.FixedWidth
-				height = options.FixedHeight
+				// Both set: treat as max bounds, fit proportionally (maintain aspect ratio)
+				hFromW := int(math.Round(float64(sz.Max.Y) * float64(options.FixedWidth) / float64(sz.Max.X) * charW))
+				if hFromW <= options.FixedHeight {
+					// Width is the limiting dimension
+					width = options.FixedWidth
+					height = hFromW
+					if height < 1 {
+						height = 1
+					}
+				} else {
+					// Height is the limiting dimension
+					height = options.FixedHeight
+					if charW > 0 {
+						width = int(math.Round(float64(sz.Max.X) * float64(options.FixedHeight) / float64(sz.Max.Y) / charW))
+					} else {
+						width = sz.Max.X
+					}
+					if width < 1 {
+						width = 1
+					}
+				}
 			} else if hasW {
 				// Width only: compute char-aspect-corrected height to avoid stretching
 				width = options.FixedWidth

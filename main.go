@@ -542,7 +542,7 @@ func playFrames(frameCh <-chan string, interval time.Duration, out io.Writer, in
 	return playResultFinished
 }
 
-func applyVideoSettingsForScreen(options *convert.Options, settings videoPlaybackSettings, screenWidth int, _ int) {
+func applyVideoSettingsForScreen(options *convert.Options, settings videoPlaybackSettings, screenWidth int, screenHeight int) {
 	options.Colored = settings.colored
 	options.Reversed = false
 	options.Ratio = 1
@@ -551,7 +551,7 @@ func applyVideoSettingsForScreen(options *convert.Options, settings videoPlaybac
 
 	qualityRatio := float64(settings.quality) / 100
 	options.FixedWidth = scaleBetween(4, maxInt(4, screenWidth-2), qualityRatio)
-	options.FixedHeight = -1 // let the converter compute char-aspect-corrected height
+	options.FixedHeight = scaleBetween(2, maxInt(2, screenHeight-2), qualityRatio)
 }
 
 func getTerminalSizeFallback(defaultWidth int, defaultHeight int) (int, int) {
