@@ -12,6 +12,8 @@ if (platform === "darwin" && arch === "arm64") {
   bin = path.join(__dirname, "media2ascii_darwin_arm64");
 } else if (platform === "darwin") {
   bin = path.join(__dirname, "media2ascii_darwin_amd64");
+} else if (platform === "win32") {
+  bin = path.join(__dirname, "media2ascii_windows_amd64.exe");
 } else {
   console.error("Plataforma não suportada: " + platform + "/" + arch);
   process.exit(1);

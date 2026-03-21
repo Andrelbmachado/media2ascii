@@ -10,7 +10,8 @@ const zlib = require("zlib");
 const VERSION = "v1.0.0";
 const REPO = "Andrelbmachado/media2ascii";
 const BIN_DIR = path.join(__dirname, "bin");
-const BIN_PATH = path.join(BIN_DIR, "media2ascii");
+const IS_WINDOWS = os.platform() === "win32";
+const BIN_PATH = path.join(BIN_DIR, IS_WINDOWS ? "media2ascii_windows_amd64.exe" : "media2ascii");
 
 function getPlatformAsset() {
   const platform = os.platform();
@@ -19,6 +20,10 @@ function getPlatformAsset() {
   if (platform === "darwin") {
     if (arch === "arm64") return "media2ascii_darwin_arm64.tar.gz";
     return "media2ascii_darwin_amd64.tar.gz";
+  }
+
+  if (platform === "win32") {
+    return "media2ascii_windows_amd64.zip";
   }
 
   throw new Error(
@@ -49,8 +54,12 @@ function download(url, dest) {
   });
 }
 
-function extractTarGz(tarPath, destDir) {
-  execSync(`tar -xzf "${tarPath}" -C "${destDir}"`);
+function extractArchive(archivePath, destDir) {
+  if (IS_WINDOWS) {
+    execSync(`powershell -Command "Expand-Archive -Path '${archivePath}' -DestinationPath '${destDir}' -Force"`);
+  } else {
+    execSync(`tar -xzf "${archivePath}" -C "${destDir}"`);
+  }
 }
 
 async function install() {
@@ -58,16 +67,18 @@ async function install() {
 
   const asset = getPlatformAsset();
   const url = `https://github.com/${REPO}/releases/download/${VERSION}/${asset}`;
-  const tarPath = path.join(os.tmpdir(), asset);
+  const archivePath = path.join(os.tmpdir(), asset);
 
   console.log(`Baixando media2ascii ${VERSION}...`);
-  await download(url, tarPath);
+  await download(url, archivePath);
 
   console.log("Extraindo...");
-  extractTarGz(tarPath, BIN_DIR);
-  fs.unlinkSync(tarPath);
+  extractArchive(archivePath, BIN_DIR);
+  fs.unlinkSync(archivePath);
 
-  fs.chmodSync(BIN_PATH, 0o755);
+  if (!IS_WINDOWS) {
+    fs.chmodSync(BIN_PATH, 0o755);
+  }
   console.log("media2ascii instalado com sucesso!");
 }
 

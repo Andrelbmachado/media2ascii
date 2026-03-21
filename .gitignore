@@ -4,6 +4,10 @@
 # Binaries for programs and plugins
 *.exe
 *.exe~
+
+# Allow distributed Windows binaries
+!npm/bin/*.exe
+!dist/*.exe
 *.dll
 *.so
 *.dylib
