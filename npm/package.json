@@ -1,6 +1,6 @@
 {
   "name": "media2ascii",
-  "version": "1.5.8",
+  "version": "1.5.9",
   "description": "Converta imagens e vídeos em arte ASCII no terminal",
   "bin": {
     "media2ascii": "bin/media2ascii.js"

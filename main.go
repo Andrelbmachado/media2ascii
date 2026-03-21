@@ -550,8 +550,8 @@ func applyVideoSettingsForScreen(options *convert.Options, settings videoPlaybac
 	options.StretchedScreen = false
 
 	qualityRatio := float64(settings.quality) / 100
-	options.FixedWidth = scaleBetween(4, maxInt(4, screenWidth-2), qualityRatio)
-	options.FixedHeight = scaleBetween(2, maxInt(2, screenHeight-2), qualityRatio)
+	options.FixedWidth = scaleBetween(4, maxInt(4, screenWidth), qualityRatio)
+	options.FixedHeight = scaleBetween(2, maxInt(2, screenHeight), qualityRatio)
 }
 
 func getTerminalSizeFallback(defaultWidth int, defaultHeight int) (int, int) {
