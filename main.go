@@ -552,20 +552,11 @@ func applyVideoSettingsForScreen(options *convert.Options, settings videoPlaybac
 	options.Colored = settings.colored
 	options.Reversed = false
 	options.Ratio = 1
-	if settings.quality == maxQuality {
-		// Quality 100: stretch to fill the entire terminal — no borders
-		options.FitScreen = false
-		options.StretchedScreen = true
-		options.FixedWidth = -1
-		options.FixedHeight = -1
-	} else {
-		// Quality < 100: proportional fit within quality-scaled max bounds
-		options.FitScreen = false
-		options.StretchedScreen = false
-		qualityRatio := float64(settings.quality) / 100
-		options.FixedWidth = scaleBetween(4, maxInt(4, screenWidth-2), qualityRatio)
-		options.FixedHeight = scaleBetween(2, maxInt(2, screenHeight-2), qualityRatio)
-	}
+	options.FitScreen = false
+	options.StretchedScreen = false
+	qualityRatio := float64(settings.quality) / 100
+	options.FixedWidth = scaleBetween(4, maxInt(4, screenWidth-2), qualityRatio)
+	options.FixedHeight = scaleBetween(2, maxInt(2, screenHeight-2), qualityRatio)
 }
 
 func scaleBetween(minimum int, maximum int, ratio float64) int {
