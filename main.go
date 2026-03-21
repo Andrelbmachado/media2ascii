@@ -552,11 +552,10 @@ func applyVideoSettingsForScreen(options *convert.Options, settings videoPlaybac
 	options.Colored = settings.colored
 	options.Reversed = false
 	options.Ratio = 1
-	options.FitScreen = false
+	options.FitScreen = true
 	options.StretchedScreen = false
-	qualityRatio := float64(settings.quality) / 100
-	options.FixedWidth = scaleBetween(4, maxInt(4, screenWidth-2), qualityRatio)
-	options.FixedHeight = scaleBetween(2, maxInt(2, screenHeight-2), qualityRatio)
+	options.FixedWidth = -1
+	options.FixedHeight = -1
 }
 
 func scaleBetween(minimum int, maximum int, ratio float64) int {

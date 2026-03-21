@@ -5,7 +5,6 @@ import (
 	"github.com/Andrelbmachado/media2ascii/terminal"
 	"image"
 	"log"
-	"math"
 )
 
 // NewResizeHandler create a new resize handler
@@ -27,50 +26,13 @@ func initResizeResolver(handler *ImageResizeHandler) {
 			return options.FixedWidth != -1 || options.FixedHeight != -1
 		},
 		compute: func(sz image.Rectangle, options *Options, handler *ImageResizeHandler) (width, height int, err error) {
-			charW := handler.terminal.CharWidth()
-			hasW := options.FixedWidth != -1
-			hasH := options.FixedHeight != -1
-
-			if hasW && hasH {
-				// Both set: treat as max bounds, fit proportionally (maintain aspect ratio)
-				hFromW := int(math.Round(float64(sz.Max.Y) * float64(options.FixedWidth) / float64(sz.Max.X) * charW))
-				if hFromW <= options.FixedHeight {
-					// Width is the limiting dimension
-					width = options.FixedWidth
-					height = hFromW
-					if height < 1 {
-						height = 1
-					}
-				} else {
-					// Height is the limiting dimension
-					height = options.FixedHeight
-					if charW > 0 {
-						width = int(math.Round(float64(sz.Max.X) * float64(options.FixedHeight) / float64(sz.Max.Y) / charW))
-					} else {
-						width = sz.Max.X
-					}
-					if width < 1 {
-						width = 1
-					}
-				}
-			} else if hasW {
-				// Width only: compute char-aspect-corrected height to avoid stretching
+			height = sz.Max.Y
+			width = sz.Max.X
+			if options.FixedWidth != -1 {
 				width = options.FixedWidth
-				height = int(math.Round(float64(sz.Max.Y) * float64(options.FixedWidth) / float64(sz.Max.X) * charW))
-				if height < 1 {
-					height = 1
-				}
-			} else {
-				// Height only: compute char-aspect-corrected width to avoid stretching
+			}
+			if options.FixedHeight != -1 {
 				height = options.FixedHeight
-				if charW > 0 {
-					width = int(math.Round(float64(sz.Max.X) * float64(options.FixedHeight) / float64(sz.Max.Y) / charW))
-				} else {
-					width = sz.Max.X
-				}
-				if width < 1 {
-					width = 1
-				}
 			}
 			return
 		},
