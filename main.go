@@ -22,6 +22,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/Andrelbmachado/media2ascii/convert"
@@ -29,6 +30,7 @@ import (
 	"golang.org/x/image/font"
 	"golang.org/x/image/font/basicfont"
 	"golang.org/x/image/math/fixed"
+	"golang.org/x/term"
 )
 
 const (
@@ -207,15 +209,53 @@ func playVideoAsASCII(cfg cliConfig) error {
 	signal.Notify(interruptChannel, os.Interrupt)
 	defer signal.Stop(interruptChannel)
 
-	fmt.Fprintln(os.Stdout, "Iniciando conversão... Pressione Ctrl+C para parar.")
+	// Raw mode: detect spacebar without requiring Enter.
+	stdinFd := int(os.Stdin.Fd())
+	var rawState *term.State
+	setupRaw := func() {
+		rawState, _ = term.MakeRaw(stdinFd)
+	}
+	restoreNormal := func() {
+		if rawState != nil {
+			term.Restore(stdinFd, rawState)
+			rawState = nil
+		}
+	}
+	defer restoreNormal()
+	setupRaw()
+
+	// Keypress goroutine: space → pause, Ctrl+C / q → interrupt.
+	pauseCh := make(chan struct{}, 1)
+	var listenKeys int32 = 1
+	go func() {
+		buf := make([]byte, 1)
+		for {
+			if _, err := os.Stdin.Read(buf); err != nil {
+				return
+			}
+			if atomic.LoadInt32(&listenKeys) == 0 {
+				continue
+			}
+			switch buf[0] {
+			case ' ':
+				select {
+				case pauseCh <- struct{}{}:
+				default:
+				}
+			case 3, 'q', 'Q': // Ctrl+C or Q
+				interruptChannel <- os.Interrupt
+			}
+		}
+	}()
+
+	fmt.Fprintln(os.Stdout, "Iniciando conversão... Pressione Ctrl+C para parar. ESPAÇO para pausar.")
 
 	for {
 		opts := buildConvertOptions(cfg)
 		screenWidth, screenHeight := getTerminalSizeFallback(120, 40)
 		applyVideoSettingsForScreen(opts, settings, screenWidth, screenHeight)
 
-		// Prepare audio in background (macOS: sets up pipe instantly;
-		// Windows: extracts WAV — runs concurrently with video startup).
+		// Prepare audio in background.
 		audioCh := make(chan *audioPlayer, 1)
 		if !settings.audio {
 			audioCh <- nil
@@ -228,7 +268,6 @@ func playVideoAsASCII(cfg cliConfig) error {
 			return err
 		}
 
-		// Wait for audio to be ready before starting playback (max 15s for Windows extraction).
 		var audio *audioPlayer
 		select {
 		case audio = <-audioCh:
@@ -239,17 +278,70 @@ func playVideoAsASCII(cfg cliConfig) error {
 		}
 
 		frameInterval := time.Duration(float64(time.Second) / settings.fps)
-		interrupted := playFrames(frameCh, frameInterval, os.Stdout, interruptChannel, screenWidth, screenHeight)
+
+		// Inner loop: play → pause → resume, until video ends or user quits.
+		done := false
+		for !done {
+			result := playFrames(frameCh, frameInterval, os.Stdout, interruptChannel, pauseCh, screenWidth, screenHeight)
+
+			switch result {
+			case playResultInterrupted:
+				if audio != nil {
+					audio.stop()
+				}
+				restoreNormal()
+				fmt.Fprintln(os.Stdout, "\nPlayback interrompido.")
+				return nil
+
+			case playResultPaused:
+				// Keep current frame on screen; show menu below.
+				atomic.StoreInt32(&listenKeys, 0)
+				restoreNormal()
+				fmt.Fprintln(os.Stdout, "")
+				newSettings, keepGoing, quit := askPlaybackAction(os.Stdin, os.Stdout, settings)
+				if quit {
+					if audio != nil {
+						audio.stop()
+					}
+					// Drain remaining frames so goroutines can exit.
+					go func() {
+						for range frameCh {
+						}
+					}()
+					return nil
+				}
+				// Apply audio change immediately if toggled.
+				if newSettings.audio != settings.audio {
+					if audio != nil {
+						audio.stop()
+						audio = nil
+					}
+					if newSettings.audio {
+						a := newAudioPlayer(cfg.file, ffmpegBin)
+						if a != nil {
+							a.start()
+						}
+						audio = a
+					}
+				}
+				settings = newSettings
+				_ = keepGoing
+				setupRaw()
+				atomic.StoreInt32(&listenKeys, 1)
+				// Continue consuming remaining frames from same channel.
+
+			case playResultFinished:
+				done = true
+			}
+		}
 
 		if audio != nil {
 			audio.stop()
 		}
 
-		if interrupted {
-			fmt.Fprintln(os.Stdout, "\nPlayback interrompido.")
-			break
-		}
-
+		// End-of-video menu.
+		atomic.StoreInt32(&listenKeys, 0)
+		restoreNormal()
 		newSettings, replay, quit := askPlaybackAction(os.Stdin, os.Stdout, settings)
 		if quit {
 			break
@@ -257,6 +349,8 @@ func playVideoAsASCII(cfg cliConfig) error {
 		if replay {
 			settings = newSettings
 		}
+		setupRaw()
+		atomic.StoreInt32(&listenKeys, 1)
 	}
 
 	return nil
@@ -412,11 +506,21 @@ func readOnePNG(r io.Reader) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-func playFrames(frameCh <-chan string, interval time.Duration, out io.Writer, interrupt <-chan os.Signal, screenWidth, screenHeight int) bool {
+type playResult int
+
+const (
+	playResultFinished    playResult = iota
+	playResultInterrupted            // Ctrl+C
+	playResultPaused                 // spacebar
+)
+
+func playFrames(frameCh <-chan string, interval time.Duration, out io.Writer, interrupt <-chan os.Signal, pause <-chan struct{}, screenWidth, screenHeight int) playResult {
 	for frame := range frameCh {
 		select {
 		case <-interrupt:
-			return true
+			return playResultInterrupted
+		case <-pause:
+			return playResultPaused
 		default:
 		}
 
@@ -428,11 +532,14 @@ func playFrames(frameCh <-chan string, interval time.Duration, out io.Writer, in
 		select {
 		case <-interrupt:
 			timer.Stop()
-			return true
+			return playResultInterrupted
+		case <-pause:
+			timer.Stop()
+			return playResultPaused
 		case <-timer.C:
 		}
 	}
-	return false
+	return playResultFinished
 }
 
 func applyVideoSettingsForScreen(options *convert.Options, settings videoPlaybackSettings, screenWidth int, screenHeight int) {
