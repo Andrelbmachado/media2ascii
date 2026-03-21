@@ -525,10 +525,10 @@ func playFrames(frameCh <-chan string, interval time.Duration, out io.Writer, in
 		default:
 		}
 
-		// Trim trailing newlines: if the frame fills the terminal height, the
-		// final \n scrolls the terminal one line each frame, causing the video
-		// to drift off-screen over time.
+		// In raw mode OPOST is disabled, so \n is bare LF (no carriage return).
+		// Replace \n with \r\n so each line starts at column 1.
 		frame = strings.TrimRight(frame, "\n")
+		frame = strings.ReplaceAll(frame, "\n", "\r\n")
 
 		buf.WriteString("\033[H\033[2J")
 		buf.WriteString(frame)
