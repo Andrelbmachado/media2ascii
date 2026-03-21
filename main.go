@@ -13,7 +13,6 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
-	"regexp"
 	"runtime"
 	"strconv"
 	"strings"
@@ -31,7 +30,6 @@ const (
 	defaultFPS     = 8.0
 )
 
-var ansiSequenceRegexp = regexp.MustCompile(`\x1b\[[0-9;]*m`)
 var convertDefaultOptions = convert.DefaultOptions
 
 type cliConfig struct {
@@ -331,6 +329,7 @@ func readOnePNG(r io.Reader) ([]byte, error) {
 }
 
 func playFrames(frameCh <-chan string, interval time.Duration, out io.Writer, interrupt <-chan os.Signal, screenWidth, screenHeight int) bool {
+	buf := bufio.NewWriterSize(out, 4<<20)
 	for frame := range frameCh {
 		select {
 		case <-interrupt:
@@ -338,8 +337,14 @@ func playFrames(frameCh <-chan string, interval time.Duration, out io.Writer, in
 		default:
 		}
 
-		fmt.Fprint(out, "\033[H\033[2J")
-		fmt.Fprint(out, frame)
+		// Trim trailing newlines: if the frame fills the terminal height, the
+		// final \n scrolls the terminal one line each frame, causing the video
+		// to drift off-screen over time.
+		frame = strings.TrimRight(frame, "\n")
+
+		buf.WriteString("\033[H\033[2J")
+		buf.WriteString(frame)
+		buf.Flush()
 
 		timer := time.NewTimer(interval)
 		select {
