@@ -160,7 +160,8 @@ func buildConvertOptions(cfg cliConfig) *convert.Options {
 }
 
 func playVideoAsASCII(converter *convert.ImageConverter, cfg cliConfig) error {
-	if _, err := exec.LookPath("ffmpeg"); err != nil {
+	ffmpegBin, err := exec.LookPath("ffmpeg")
+	if err != nil {
 		return errors.New(missingToolGuidance("ffmpeg"))
 	}
 
@@ -181,13 +182,32 @@ func playVideoAsASCII(converter *convert.ImageConverter, cfg cliConfig) error {
 		screenWidth, screenHeight := getTerminalSizeFallback(120, 40)
 		applyVideoSettingsForScreen(opts, settings, screenWidth, screenHeight)
 
+		// Prepare audio in background (macOS: sets up pipe instantly;
+		// Windows: extracts WAV — runs concurrently with video startup).
+		audioCh := make(chan *audioPlayer, 1)
+		go func() { audioCh <- newAudioPlayer(cfg.file, ffmpegBin) }()
+
 		frameCh, err := streamVideoFrames(cfg.file, settings.fps, opts)
 		if err != nil {
 			return err
 		}
 
+		// Wait for audio to be ready before starting playback (max 15s for Windows extraction).
+		var audio *audioPlayer
+		select {
+		case audio = <-audioCh:
+		case <-time.After(15 * time.Second):
+		}
+		if audio != nil {
+			audio.start()
+		}
+
 		frameInterval := time.Duration(float64(time.Second) / settings.fps)
 		interrupted := playFrames(frameCh, frameInterval, os.Stdout, interruptChannel, screenWidth, screenHeight)
+
+		if audio != nil {
+			audio.stop()
+		}
 
 		if interrupted {
 			fmt.Fprintln(os.Stdout, "\nPlayback interrompido.")
@@ -771,6 +791,85 @@ func exportVideoAsASCII(converter *convert.ImageConverter, cfg cliConfig) error 
 	fmt.Printf("Vídeo ASCII salvo em: %s\n", outputMP4)
 	fmt.Printf("Frames de texto salvos em: %s\n", framesDir)
 	return nil
+}
+
+// audioPlayer manages background audio playback during ASCII video rendering.
+type audioPlayer struct {
+	cmds    []*exec.Cmd
+	tmpFile string
+}
+
+// newAudioPlayer prepares audio for videoFile. Returns nil if the platform is
+// unsupported or the video has no audio track (fails silently).
+func newAudioPlayer(videoFile, ffmpegBin string) *audioPlayer {
+	switch runtime.GOOS {
+	case "darwin":
+		return newDarwinAudioPlayer(videoFile, ffmpegBin)
+	case "windows":
+		return newWindowsAudioPlayer(videoFile, ffmpegBin)
+	}
+	return nil
+}
+
+// newDarwinAudioPlayer pipes ffmpeg audio output directly into afplay (built-in).
+// No temp file needed — returns immediately without blocking.
+func newDarwinAudioPlayer(videoFile, ffmpegBin string) *audioPlayer {
+	ffmpegCmd := exec.Command(ffmpegBin,
+		"-hide_banner", "-loglevel", "error",
+		"-i", videoFile,
+		"-vn", "-f", "wav", "pipe:1",
+	)
+	stdout, err := ffmpegCmd.StdoutPipe()
+	if err != nil {
+		return nil
+	}
+	afplayCmd := exec.Command("afplay", "-")
+	afplayCmd.Stdin = stdout
+	return &audioPlayer{cmds: []*exec.Cmd{ffmpegCmd, afplayCmd}}
+}
+
+// newWindowsAudioPlayer extracts audio to a temp WAV file using ffmpeg,
+// then plays it via PowerShell's System.Media.SoundPlayer. Blocks during extraction.
+func newWindowsAudioPlayer(videoFile, ffmpegBin string) *audioPlayer {
+	tmpFile := filepath.Join(os.TempDir(), fmt.Sprintf("m2a_audio_%d.wav", os.Getpid()))
+	extractCmd := exec.Command(ffmpegBin,
+		"-y", "-hide_banner", "-loglevel", "error",
+		"-i", videoFile,
+		"-vn", "-acodec", "pcm_s16le", "-ar", "44100", "-ac", "2",
+		tmpFile,
+	)
+	if err := extractCmd.Run(); err != nil {
+		return nil // no audio track or unsupported format
+	}
+	psCmd := exec.Command("powershell", "-NonInteractive", "-Command",
+		fmt.Sprintf(
+			`$p=[System.Media.SoundPlayer]::new('%s');$p.Play();while($true){Start-Sleep 1}`,
+			tmpFile,
+		),
+	)
+	return &audioPlayer{cmds: []*exec.Cmd{psCmd}, tmpFile: tmpFile}
+}
+
+func (p *audioPlayer) start() {
+	for _, cmd := range p.cmds {
+		_ = cmd.Start()
+	}
+}
+
+func (p *audioPlayer) stop() {
+	for _, cmd := range p.cmds {
+		if cmd.Process != nil {
+			_ = cmd.Process.Kill()
+		}
+	}
+	for _, cmd := range p.cmds {
+		if cmd.Process != nil {
+			_ = cmd.Wait()
+		}
+	}
+	if p.tmpFile != "" {
+		os.Remove(p.tmpFile)
+	}
 }
 
 func usage() {
