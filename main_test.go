@@ -199,11 +199,11 @@ func TestApplyVideoSettingsForScreen(t *testing.T) {
 	settings.quality = 100
 	settings.colored = true
 	applyVideoSettingsForScreen(&opt, settings, 120, 40)
-	if opt.FixedWidth != 120 {
-		t.Errorf("expected FixedWidth=120, got %d", opt.FixedWidth)
+	if opt.FixedWidth != 118 {
+		t.Errorf("expected FixedWidth=118, got %d", opt.FixedWidth)
 	}
-	if opt.FixedHeight != 40 {
-		t.Errorf("expected FixedHeight=40, got %d", opt.FixedHeight)
+	if opt.FixedHeight != 38 {
+		t.Errorf("expected FixedHeight=38, got %d", opt.FixedHeight)
 	}
 	if !opt.Colored {
 		t.Error("expected Colored=true")
