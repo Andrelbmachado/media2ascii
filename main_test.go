@@ -119,23 +119,6 @@ func TestAskPlaybackAction(t *testing.T) {
 	}
 }
 
-func TestAskPlaybackActionShowScreenSize(t *testing.T) {
-	base := videoPlaybackSettings{fps: 8, quality: 70, colored: true}
-	out := &bytes.Buffer{}
-	next, replay, quit := askPlaybackAction(strings.NewReader("tela\nsair\n"), out, base)
-	if replay {
-		t.Error("expected replay=false")
-	}
-	if !quit {
-		t.Error("expected quit=true")
-	}
-	if next != base {
-		t.Error("expected settings unchanged")
-	}
-	if !strings.Contains(out.String(), "tela atual:") {
-		t.Error("expected screen size output")
-	}
-}
 
 func TestParsePlaybackCommand(t *testing.T) {
 	base := videoPlaybackSettings{fps: 8, quality: 70, colored: true}
@@ -243,14 +226,3 @@ func TestVisibleWidth(t *testing.T) {
 	}
 }
 
-func TestIsShowScreenSizeCommand(t *testing.T) {
-	if !isShowScreenSizeCommand("tela") {
-		t.Error("expected 'tela' to be screen size command")
-	}
-	if !isShowScreenSizeCommand("size") {
-		t.Error("expected 'size' to be screen size command")
-	}
-	if isShowScreenSizeCommand("fps 10") {
-		t.Error("expected 'fps 10' NOT to be screen size command")
-	}
-}

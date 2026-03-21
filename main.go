@@ -690,9 +690,9 @@ func parsePlaybackCommand(input string, current videoPlaybackSettings) (videoPla
 		val := strings.ToLower(strings.TrimSpace(trimmed[len("cores"):]))
 		updated := current
 		switch {
-		case val == "bw" || val == "pb":
+		case strings.Contains(val, "bw") || strings.Contains(val, "pb"):
 			updated.colored = false
-		case val == "color" || val == "color":
+		case strings.Contains(val, "color") || strings.Contains(val, "cor"):
 			updated.colored = true
 		default:
 			return current, false, false, errors.New("use: cores BW ou cores Color")
