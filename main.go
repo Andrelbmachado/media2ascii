@@ -608,7 +608,11 @@ func centerASCIIFrame(frameASCII string, screenWidth int, screenHeight int) stri
 		builder.WriteString("\n")
 	}
 
-	return builder.String()
+	result := builder.String()
+	if len(result) > 0 && result[len(result)-1] == '\n' {
+		result = result[:len(result)-1]
+	}
+	return result
 }
 
 func visibleWidth(value string) int {
