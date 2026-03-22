@@ -34,7 +34,6 @@ import (
 	"regexp"
 	"runtime"
 	"strconv"
-	"math"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -56,7 +55,6 @@ const (
 )
 
 var convertDefaultOptions = convert.DefaultOptions
-var ansiSequenceRegexp = regexp.MustCompile(`\x1b\[[0-9;]*m`)
 
 type cliConfig struct {
 	file    string
@@ -540,8 +538,7 @@ func playFrames(frameCh <-chan string, interval time.Duration, out io.Writer, in
 		default:
 		}
 
-		// Center the frame in the terminal, then fix newlines for raw mode.
-		frame = centerASCIIFrame(frame, screenWidth, screenHeight)
+		// Trim trailing newline to prevent terminal scroll drift, fix newlines for raw mode.
 		frame = strings.TrimRight(frame, "\n")
 		frame = strings.ReplaceAll(frame, "\n", "\r\n")
 
@@ -571,49 +568,6 @@ func applyVideoSettingsForScreen(options *convert.Options, settings videoPlaybac
 	options.StretchedScreen = false
 	options.FixedWidth = -1
 	options.FixedHeight = -1
-}
-
-func scaleBetween(minimum int, maximum int, ratio float64) int {
-	if maximum <= minimum {
-		return minimum
-	}
-	clamped := math.Min(math.Max(ratio, 0), 1)
-	return minimum + int(math.Round(float64(maximum-minimum)*clamped))
-}
-
-func centerASCIIFrame(frameASCII string, screenWidth int, screenHeight int) string {
-	trimmed := strings.TrimRight(frameASCII, "\n")
-	frameLines := []string{""}
-	if trimmed != "" {
-		frameLines = strings.Split(trimmed, "\n")
-	}
-
-	frameHeight := len(frameLines)
-	padTop := maxInt((screenHeight-frameHeight)/2, 0)
-	padBottom := maxInt(screenHeight-padTop-frameHeight, 0)
-
-	var builder strings.Builder
-	for i := 0; i < padTop; i++ {
-		builder.WriteString("\n")
-	}
-	for _, line := range frameLines {
-		lineWidth := visibleWidth(line)
-		padLeft := maxInt((screenWidth-lineWidth)/2, 0)
-		padRight := maxInt(screenWidth-padLeft-lineWidth, 0)
-		builder.WriteString(strings.Repeat(" ", padLeft))
-		builder.WriteString(line)
-		builder.WriteString(strings.Repeat(" ", padRight))
-		builder.WriteString("\n")
-	}
-	for i := 0; i < padBottom; i++ {
-		builder.WriteString("\n")
-	}
-	return builder.String()
-}
-
-func visibleWidth(value string) int {
-	plain := ansiSequenceRegexp.ReplaceAllString(value, "")
-	return len([]rune(plain))
 }
 
 func getTerminalSizeFallback(defaultWidth int, defaultHeight int) (int, int) {
