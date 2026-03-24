@@ -251,7 +251,11 @@ func playVideoAsASCII(cfg cliConfig) error {
 				return
 			}
 			if atomic.LoadInt32(&listenKeys) == 0 {
-				menuInputCh <- buf[0]
+				b := buf[0]
+				if b == '\r' { // raw mode: Enter sends \r, convert to \n for ReadString
+					b = '\n'
+				}
+				menuInputCh <- b
 				continue
 			}
 			switch buf[0] {
@@ -532,7 +536,7 @@ const (
 	playResultPaused                 // spacebar
 )
 
-func playFrames(frameCh <-chan string, interval time.Duration, out io.Writer, interrupt <-chan os.Signal, pause <-chan struct{}, _, _ int) playResult {
+func playFrames(frameCh <-chan string, interval time.Duration, out io.Writer, interrupt <-chan os.Signal, pause <-chan struct{}, screenWidth, screenHeight int) playResult {
 	buf := bufio.NewWriterSize(out, 4<<20)
 	for frame := range frameCh {
 		select {
@@ -543,12 +547,44 @@ func playFrames(frameCh <-chan string, interval time.Duration, out io.Writer, in
 		default:
 		}
 
-		// Trim trailing newline to prevent terminal scroll drift, fix newlines for raw mode.
+		// Trim trailing newline; split lines for centering.
 		frame = strings.TrimRight(frame, "\n")
-		frame = strings.ReplaceAll(frame, "\n", "\r\n")
+		lines := strings.Split(frame, "\n")
+
+		// Horizontal centering: pad each line on the left.
+		leftPad := 0
+		if screenWidth > 0 && len(lines) > 0 {
+			if fw := visibleWidth(lines[0]); fw > 0 {
+				if p := (screenWidth - fw) / 2; p > 0 {
+					leftPad = p
+				}
+			}
+		}
+
+		// Vertical centering: blank lines above the frame.
+		topPad := 0
+		if screenHeight > 0 && len(lines) < screenHeight {
+			if p := (screenHeight - len(lines)) / 2; p > 0 {
+				topPad = p
+			}
+		}
+
+		// Build final output (raw mode: \r\n line endings).
+		var sb strings.Builder
+		for i := 0; i < topPad; i++ {
+			sb.WriteString("\r\n")
+		}
+		padding := strings.Repeat(" ", leftPad)
+		for i, line := range lines {
+			sb.WriteString(padding)
+			sb.WriteString(line)
+			if i < len(lines)-1 {
+				sb.WriteString("\r\n")
+			}
+		}
 
 		buf.WriteString("\033[H\033[2J")
-		buf.WriteString(frame)
+		buf.WriteString(sb.String())
 		buf.Flush()
 
 		timer := time.NewTimer(interval)
@@ -565,7 +601,7 @@ func playFrames(frameCh <-chan string, interval time.Duration, out io.Writer, in
 	return playResultFinished
 }
 
-func applyVideoSettingsForScreen(options *convert.Options, settings videoPlaybackSettings, _ int, _ int) {
+func applyVideoSettingsForScreen(options *convert.Options, settings videoPlaybackSettings, screenWidth int, screenHeight int) {
 	options.Colored = settings.colored
 	options.Reversed = false
 	options.Ratio = 1

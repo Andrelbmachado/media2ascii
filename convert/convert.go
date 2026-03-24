@@ -3,8 +3,8 @@ package convert
 
 import (
 	"bytes"
+	"encoding/binary"
 	"github.com/Andrelbmachado/media2ascii/v2/ascii"
-	"github.com/rwcarlsen/goexif/exif"
 	"image"
 	"image/color"
 	// Support decode jpeg image
@@ -165,22 +165,67 @@ func OpenImageFile(imageFilename string) (image.Image, error) {
 	return applyExifOrientation(img, orientation), nil
 }
 
-// readExifOrientation uses goexif to reliably read the EXIF orientation tag
-// from raw image bytes. Returns 1 (no-op) when there is no tag or on any error.
+// readExifOrientation parses the EXIF Orientation tag directly from raw image
+// bytes without external dependencies. Supports JPEG and TIFF. Returns 1 (no-op)
+// on any error or when the tag is absent.
 func readExifOrientation(data []byte) int {
-	x, err := exif.Decode(bytes.NewReader(data))
-	if err != nil {
+	// JPEG: locate APP1 marker that contains EXIF.
+	if len(data) >= 2 && data[0] == 0xFF && data[1] == 0xD8 {
+		i := 2
+		for i+3 < len(data) {
+			if data[i] != 0xFF {
+				break
+			}
+			marker := data[i+1]
+			segLen := int(binary.BigEndian.Uint16(data[i+2 : i+4]))
+			if marker == 0xE1 && i+10 < len(data) && string(data[i+4:i+10]) == "Exif\x00\x00" {
+				// Found APP1 with EXIF header; parse TIFF block starting at i+10.
+				return readOrientationFromTIFF(data[i+10 : i+2+segLen])
+			}
+			if marker == 0xDA { // Start Of Scan — no more markers before image data
+				break
+			}
+			i += 2 + segLen
+		}
 		return 1
 	}
-	tag, err := x.Get(exif.Orientation)
-	if err != nil {
+	// TIFF: try directly.
+	return readOrientationFromTIFF(data)
+}
+
+// readOrientationFromTIFF parses a raw TIFF block and returns the value of
+// IFD0 tag 0x0112 (Orientation). Returns 1 on any error.
+func readOrientationFromTIFF(b []byte) int {
+	if len(b) < 8 {
 		return 1
 	}
-	val, err := tag.Int(0)
-	if err != nil {
+	var order binary.ByteOrder
+	switch string(b[0:2]) {
+	case "II":
+		order = binary.LittleEndian
+	case "MM":
+		order = binary.BigEndian
+	default:
 		return 1
 	}
-	return val
+	if order.Uint16(b[2:4]) != 42 { // TIFF magic
+		return 1
+	}
+	ifdOffset := int(order.Uint32(b[4:8]))
+	if ifdOffset+2 > len(b) {
+		return 1
+	}
+	numEntries := int(order.Uint16(b[ifdOffset : ifdOffset+2]))
+	for j := 0; j < numEntries; j++ {
+		off := ifdOffset + 2 + j*12
+		if off+12 > len(b) {
+			break
+		}
+		if order.Uint16(b[off:off+2]) == 0x0112 { // Orientation tag
+			return int(order.Uint16(b[off+8 : off+10]))
+		}
+	}
+	return 1
 }
 
 // applyExifOrientation rotates/flips img according to the EXIF orientation value.

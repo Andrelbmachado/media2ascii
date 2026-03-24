@@ -11,8 +11,6 @@ require (
 	golang.org/x/image v0.37.0
 )
 
-require github.com/rwcarlsen/goexif v0.0.0-20190401172101-9e8deecbddbd
-
 require (
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
