@@ -2,8 +2,8 @@ package convert
 
 import (
 	"fmt"
-	terminal2 "github.com/Andrelbmachado/media2ascii/terminal"
-	"github.com/Andrelbmachado/media2ascii/terminal/mocks"
+	terminal2 "github.com/Andrelbmachado/media2ascii/v2/terminal"
+	"github.com/Andrelbmachado/media2ascii/v2/terminal/mocks"
 	"github.com/stretchr/testify/assert"
 	"log"
 	"testing"

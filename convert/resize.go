@@ -2,7 +2,7 @@ package convert
 
 import (
 	"github.com/nfnt/resize"
-	"github.com/Andrelbmachado/media2ascii/terminal"
+	"github.com/Andrelbmachado/media2ascii/v2/terminal"
 	"image"
 	"log"
 )

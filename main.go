@@ -39,8 +39,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/Andrelbmachado/media2ascii/convert"
-	termaccess "github.com/Andrelbmachado/media2ascii/terminal"
+	"github.com/Andrelbmachado/media2ascii/v2/convert"
+	termaccess "github.com/Andrelbmachado/media2ascii/v2/terminal"
 	"golang.org/x/image/font"
 	"golang.org/x/image/font/basicfont"
 	"golang.org/x/image/math/fixed"

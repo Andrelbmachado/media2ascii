@@ -3,7 +3,7 @@ package convert
 
 import (
 	"bytes"
-	"github.com/Andrelbmachado/media2ascii/ascii"
+	"github.com/Andrelbmachado/media2ascii/v2/ascii"
 	"github.com/rwcarlsen/goexif/exif"
 	"image"
 	"image/color"

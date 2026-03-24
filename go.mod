@@ -1,4 +1,4 @@
-module github.com/Andrelbmachado/media2ascii
+module github.com/Andrelbmachado/media2ascii/v2
 
 go 1.25.0
 
