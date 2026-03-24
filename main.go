@@ -237,7 +237,11 @@ func playVideoAsASCII(cfg cliConfig) error {
 	defer restoreNormal()
 	setupRaw()
 
+	// menuInputCh receives stdin bytes when listenKeys==0 (menu mode).
+	menuInputCh := make(chan byte, 256)
+
 	// Keypress goroutine: space → pause, Ctrl+C / q → interrupt.
+	// When listenKeys==0, bytes are forwarded to menuInputCh instead of discarded.
 	pauseCh := make(chan struct{}, 1)
 	var listenKeys int32 = 1
 	go func() {
@@ -247,6 +251,7 @@ func playVideoAsASCII(cfg cliConfig) error {
 				return
 			}
 			if atomic.LoadInt32(&listenKeys) == 0 {
+				menuInputCh <- buf[0]
 				continue
 			}
 			switch buf[0] {
@@ -311,7 +316,7 @@ func playVideoAsASCII(cfg cliConfig) error {
 				atomic.StoreInt32(&listenKeys, 0)
 				restoreNormal()
 				fmt.Fprintln(os.Stdout, "")
-				newSettings, keepGoing, quit := askPlaybackAction(os.Stdin, os.Stdout, settings)
+				newSettings, keepGoing, quit := askPlaybackAction(&chanReader{ch: menuInputCh}, os.Stdout, settings)
 				if quit {
 					if audio != nil {
 						audio.stop()
@@ -355,7 +360,7 @@ func playVideoAsASCII(cfg cliConfig) error {
 		// End-of-video menu.
 		atomic.StoreInt32(&listenKeys, 0)
 		restoreNormal()
-		newSettings, replay, quit := askPlaybackAction(os.Stdin, os.Stdout, settings)
+		newSettings, replay, quit := askPlaybackAction(&chanReader{ch: menuInputCh}, os.Stdout, settings)
 		if quit {
 			break
 		}
@@ -527,7 +532,7 @@ const (
 	playResultPaused                 // spacebar
 )
 
-func playFrames(frameCh <-chan string, interval time.Duration, out io.Writer, interrupt <-chan os.Signal, pause <-chan struct{}, screenWidth, screenHeight int) playResult {
+func playFrames(frameCh <-chan string, interval time.Duration, out io.Writer, interrupt <-chan os.Signal, pause <-chan struct{}, _, _ int) playResult {
 	buf := bufio.NewWriterSize(out, 4<<20)
 	for frame := range frameCh {
 		select {
@@ -560,7 +565,7 @@ func playFrames(frameCh <-chan string, interval time.Duration, out io.Writer, in
 	return playResultFinished
 }
 
-func applyVideoSettingsForScreen(options *convert.Options, settings videoPlaybackSettings, screenWidth int, screenHeight int) {
+func applyVideoSettingsForScreen(options *convert.Options, settings videoPlaybackSettings, _ int, _ int) {
 	options.Colored = settings.colored
 	options.Reversed = false
 	options.Ratio = 1
@@ -577,13 +582,6 @@ func getTerminalSizeFallback(defaultWidth int, defaultHeight int) (int, int) {
 		return defaultWidth, defaultHeight
 	}
 	return width, height
-}
-
-func maxInt(a int, b int) int {
-	if a > b {
-		return a
-	}
-	return b
 }
 
 // scaleBetween scales linearly from min to max for t in [0,1].
@@ -640,6 +638,20 @@ func centerASCIIFrame(frame string, termWidth, termHeight int) string {
 	return sb.String()
 }
 
+
+// chanReader adapts a chan byte into an io.Reader so bufio can read from it.
+type chanReader struct {
+	ch <-chan byte
+}
+
+func (r *chanReader) Read(p []byte) (n int, err error) {
+	b, ok := <-r.ch
+	if !ok {
+		return 0, io.EOF
+	}
+	p[0] = b
+	return 1, nil
+}
 
 func askPlaybackAction(in io.Reader, out io.Writer, current videoPlaybackSettings) (videoPlaybackSettings, bool, bool) {
 	reader := bufio.NewReader(in)

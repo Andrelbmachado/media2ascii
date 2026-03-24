@@ -13,6 +13,10 @@ github.com/nfnt/resize
 # github.com/pmezard/go-difflib v1.0.0
 ## explicit
 github.com/pmezard/go-difflib/difflib
+# github.com/rwcarlsen/goexif v0.0.0-20190401172101-9e8deecbddbd
+## explicit
+github.com/rwcarlsen/goexif/exif
+github.com/rwcarlsen/goexif/tiff
 # github.com/stretchr/objx v0.1.0
 ## explicit
 github.com/stretchr/objx

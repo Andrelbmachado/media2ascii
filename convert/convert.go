@@ -3,8 +3,8 @@ package convert
 
 import (
 	"bytes"
-	"encoding/binary"
 	"github.com/Andrelbmachado/media2ascii/ascii"
+	"github.com/rwcarlsen/goexif/exif"
 	"image"
 	"image/color"
 	// Support decode jpeg image
@@ -13,8 +13,6 @@ import (
 	_ "image/png"
 	"log"
 	"os"
-	"path/filepath"
-	"strings"
 )
 
 // Options to convert the image to ASCII
@@ -148,110 +146,41 @@ func (converter *ImageConverter) ImageFile2ASCIIString(imageFilename string, opt
 	return converter.Image2ASCIIString(img, option)
 }
 
-// OpenImageFile open a image and return a image object
+// OpenImageFile opens an image file and returns an image.Image with EXIF
+// orientation already applied, so the caller always gets correctly-rotated pixels.
 func OpenImageFile(imageFilename string) (image.Image, error) {
-	f, err := os.Open(imageFilename)
-	if err != nil {
-		return nil, err
-	}
-	defer f.Close()
-
-	// Read EXIF orientation for JPEG files before decoding.
-	orientation := 1
-	ext := strings.ToLower(filepath.Ext(imageFilename))
-	if ext == ".jpg" || ext == ".jpeg" {
-		orientation = readExifOrientation(f)
-	}
-
-	img, _, err := image.Decode(f)
+	// Read the whole file once; we need the bytes for both EXIF and decoding.
+	data, err := os.ReadFile(imageFilename)
 	if err != nil {
 		return nil, err
 	}
 
+	img, _, err := image.Decode(bytes.NewReader(data))
+	if err != nil {
+		return nil, err
+	}
+
+	// Apply EXIF orientation so portrait stays portrait, etc.
+	orientation := readExifOrientation(data)
 	return applyExifOrientation(img, orientation), nil
 }
 
-// readExifOrientation reads the EXIF orientation tag from a JPEG file.
-// Returns 1 (no transformation) if not found or on any error.
-// Resets the file position to the beginning after reading.
-func readExifOrientation(f *os.File) int {
-	buf := make([]byte, 65536)
-	n, _ := f.Read(buf)
-	f.Seek(0, 0)
-	data := buf[:n]
-
-	if len(data) < 3 || data[0] != 0xFF || data[1] != 0xD8 {
-		return 1 // not a JPEG
-	}
-
-	i := 2
-	for i+4 <= len(data) {
-		if data[i] != 0xFF {
-			return 1
-		}
-		marker := data[i+1]
-		i += 2
-		// Markers with no length field
-		if marker == 0xD8 || marker == 0xD9 || (marker >= 0xD0 && marker <= 0xD7) {
-			continue
-		}
-		if i+2 > len(data) {
-			return 1
-		}
-		segLen := int(data[i])<<8 | int(data[i+1])
-		if segLen < 2 {
-			return 1
-		}
-		segEnd := i + segLen
-		if segEnd > len(data) {
-			return 1
-		}
-		segData := data[i+2 : segEnd]
-		i = segEnd
-
-		if marker != 0xE1 { // not APP1
-			continue
-		}
-		if len(segData) < 6 || string(segData[:6]) != "Exif\x00\x00" {
-			continue
-		}
-
-		tiff := segData[6:]
-		if len(tiff) < 8 {
-			return 1
-		}
-
-		var bo binary.ByteOrder
-		switch {
-		case tiff[0] == 'I' && tiff[1] == 'I':
-			bo = binary.LittleEndian
-		case tiff[0] == 'M' && tiff[1] == 'M':
-			bo = binary.BigEndian
-		default:
-			return 1
-		}
-		if bo.Uint16(tiff[2:4]) != 42 {
-			return 1
-		}
-
-		ifdOffset := int(bo.Uint32(tiff[4:8]))
-		if ifdOffset+2 > len(tiff) {
-			return 1
-		}
-		numEntries := int(bo.Uint16(tiff[ifdOffset : ifdOffset+2]))
-		base := ifdOffset + 2
-		for j := 0; j < numEntries; j++ {
-			off := base + j*12
-			if off+12 > len(tiff) {
-				break
-			}
-			if bo.Uint16(tiff[off:off+2]) == 0x0112 { // Orientation tag
-				return int(bo.Uint16(tiff[off+8 : off+10]))
-			}
-		}
+// readExifOrientation uses goexif to reliably read the EXIF orientation tag
+// from raw image bytes. Returns 1 (no-op) when there is no tag or on any error.
+func readExifOrientation(data []byte) int {
+	x, err := exif.Decode(bytes.NewReader(data))
+	if err != nil {
 		return 1
 	}
-	return 1
+	tag, err := x.Get(exif.Orientation)
+	if err != nil {
+		return 1
+	}
+	val, err := tag.Int(0)
+	if err != nil {
+		return 1
+	}
+	return val
 }
 
 // applyExifOrientation rotates/flips img according to the EXIF orientation value.
