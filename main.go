@@ -586,6 +586,60 @@ func maxInt(a int, b int) int {
 	return b
 }
 
+// scaleBetween scales linearly from min to max for t in [0,1].
+// t is clamped to [0,1].
+func scaleBetween(min, max int, t float64) int {
+	if t < 0 {
+		t = 0
+	}
+	if t > 1 {
+		t = 1
+	}
+	return min + int(float64(max-min)*t)
+}
+
+// visibleWidth returns the display width of s, excluding ANSI escape sequences.
+func visibleWidth(s string) int {
+	stripped := ansiEscRegexp.ReplaceAllString(s, "")
+	return len([]rune(stripped))
+}
+
+// centerASCIIFrame centers the ASCII frame within termWidth×termHeight cells.
+func centerASCIIFrame(frame string, termWidth, termHeight int) string {
+	lines := strings.Split(strings.TrimRight(frame, "\n"), "\n")
+	frameH := len(lines)
+
+	topPad := (termHeight - frameH) / 2
+	if topPad < 0 {
+		topPad = 0
+	}
+
+	var sb strings.Builder
+	for i := 0; i < topPad; i++ {
+		sb.WriteByte('\n')
+	}
+	for _, line := range lines {
+		lw := visibleWidth(line)
+		pad := (termWidth - lw) / 2
+		if pad < 0 {
+			pad = 0
+		}
+		rightPad := termWidth - lw - pad
+		if rightPad < 0 {
+			rightPad = 0
+		}
+		sb.WriteString(strings.Repeat(" ", pad))
+		sb.WriteString(line)
+		sb.WriteString(strings.Repeat(" ", rightPad))
+		sb.WriteByte('\n')
+	}
+	botPad := termHeight - frameH - topPad
+	for i := 0; i < botPad; i++ {
+		sb.WriteByte('\n')
+	}
+	return sb.String()
+}
+
 
 func askPlaybackAction(in io.Reader, out io.Writer, current videoPlaybackSettings) (videoPlaybackSettings, bool, bool) {
 	reader := bufio.NewReader(in)

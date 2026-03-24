@@ -1,12 +1,16 @@
 {
   "name": "media2ascii",
-  "version": "2.0.1",
+  "version": "2.0.2",
   "description": "Converta imagens e vídeos em arte ASCII no terminal",
   "bin": {
     "media2ascii": "bin/media2ascii.js"
   },
+  "scripts": {
+    "postinstall": "node welcome.js"
+  },
   "files": [
-    "bin/"
+    "bin/",
+    "welcome.js"
   ],
   "keywords": [
     "ascii",
