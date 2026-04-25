@@ -3,7 +3,7 @@ package terminal
 import (
 	"errors"
 	"github.com/mattn/go-isatty"
-	terminal "github.com/wayneashleyberry/terminal-dimensions"
+	"golang.org/x/term"
 	"os"
 	"runtime"
 )
@@ -46,12 +46,13 @@ func (accessor Accessor) IsWindows() bool {
 // ScreenSize get the terminal screen size
 func (accessor Accessor) ScreenSize() (newWidth, newHeight int, err error) {
 	if !isatty.IsTerminal(os.Stdout.Fd()) && !isatty.IsCygwinTerminal(os.Stdout.Fd()) {
-		return 0, 0,
-			errors.New("can not detect the terminal")
+		return 0, 0, errors.New("can not detect the terminal")
 	}
 
-	x, _ := terminal.Width()
-	y, _ := terminal.Height()
+	width, height, err := term.GetSize(int(os.Stdout.Fd()))
+	if err != nil || width <= 0 || height <= 0 {
+		return 0, 0, errors.New("can not get terminal size")
+	}
 
-	return int(x), int(y), nil
+	return width, height, nil
 }
