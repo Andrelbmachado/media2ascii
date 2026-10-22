@@ -220,3 +220,47 @@ func TestVisibleWidth(t *testing.T) {
 	}
 }
 
+func TestMissingToolGuidanceForFFmpeg(t *testing.T) {
+	cases := map[string]string{
+		"darwin":  "brew install ffmpeg",
+		"windows": "winget install Gyan.FFmpeg",
+		"linux":   "apt install ffmpeg",
+	}
+	for goos, want := range cases {
+		msg := missingToolGuidanceFor("ffmpeg", goos)
+		if !strings.Contains(msg, want) {
+			t.Errorf("goos=%s: expected message to contain %q, got %q", goos, want, msg)
+		}
+		if !strings.Contains(msg, "ffmpeg não encontrado") {
+			t.Errorf("goos=%s: expected prefix about ffmpeg missing, got %q", goos, msg)
+		}
+	}
+
+	// Sistema desconhecido: ainda orienta, aponta para o site oficial.
+	other := missingToolGuidanceFor("ffmpeg", "plan9")
+	if !strings.Contains(other, "ffmpeg.org") {
+		t.Errorf("expected fallback to ffmpeg.org, got %q", other)
+	}
+}
+
+func TestMissingToolGuidanceForOtherTool(t *testing.T) {
+	msg := missingToolGuidanceFor("afplay", "darwin")
+	if !strings.Contains(msg, "afplay") || !strings.Contains(msg, "PATH") {
+		t.Errorf("unexpected guidance for non-ffmpeg tool: %q", msg)
+	}
+}
+
+func TestEscapePowerShellSingleQuoted(t *testing.T) {
+	cases := map[string]string{
+		`C:\Temp\m2a.wav`:        `C:\Temp\m2a.wav`,
+		`C:\Users\O'Brien\a.wav`: `C:\Users\O''Brien\a.wav`,
+		`a'b'c`:                  `a''b''c`,
+		``:                       ``,
+	}
+	for in, want := range cases {
+		if got := escapePowerShellSingleQuoted(in); got != want {
+			t.Errorf("escapePowerShellSingleQuoted(%q)=%q, want %q", in, got, want)
+		}
+	}
+}
+
