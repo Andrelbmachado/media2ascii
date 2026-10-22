@@ -1,4 +1,4 @@
-// media2ascii v2.0.0 — versão estável e funcional.
+// media2ascii v2.0.5 — versão estável e funcional.
 //
 // Novidades da v2.0 em relação à v1.x:
 //   - Suporte a áudio durante a reprodução de vídeo (macOS via afplay, Windows via PowerShell)
@@ -805,12 +805,27 @@ func audioLabel(audio bool) string {
 }
 
 func missingToolGuidance(tool string) string {
-	switch tool {
-	case "ffmpeg":
-		return "ffmpeg não encontrado no PATH. Instale com: brew install ffmpeg (macOS) ou apt install ffmpeg (Linux)"
-	default:
+	return missingToolGuidanceFor(tool, runtime.GOOS)
+}
+
+// missingToolGuidanceFor devolve a mensagem de erro para uma ferramenta ausente,
+// com o comando de instalação adequado ao sistema operacional informado.
+func missingToolGuidanceFor(tool, goos string) string {
+	if tool != "ffmpeg" {
 		return tool + " não está disponível no PATH"
 	}
+	var install string
+	switch goos {
+	case "darwin":
+		install = "brew install ffmpeg"
+	case "windows":
+		install = "winget install Gyan.FFmpeg (depois reabra o terminal)"
+	case "linux":
+		install = "sudo apt install ffmpeg (Debian/Ubuntu)"
+	default:
+		install = "veja https://ffmpeg.org/download.html"
+	}
+	return "ffmpeg não encontrado no PATH. Instale com: " + install
 }
 
 const (
@@ -1068,10 +1083,17 @@ func newWindowsAudioPlayer(videoFile, ffmpegBin string) *audioPlayer {
 	psCmd := exec.Command("powershell", "-NonInteractive", "-Command",
 		fmt.Sprintf(
 			`$p=[System.Media.SoundPlayer]::new('%s');$p.Play();while($true){Start-Sleep 1}`,
-			tmpFile,
+			escapePowerShellSingleQuoted(tmpFile),
 		),
 	)
 	return &audioPlayer{cmds: []*exec.Cmd{psCmd}, tmpFile: tmpFile}
+}
+
+// escapePowerShellSingleQuoted escapa aspas simples para uso dentro de uma
+// string literal entre aspas simples no PowerShell (' vira ''). Sem isso, um
+// caminho com ' no nome encerra a string e quebra o comando.
+func escapePowerShellSingleQuoted(s string) string {
+	return strings.ReplaceAll(s, "'", "''")
 }
 
 func (p *audioPlayer) start() {

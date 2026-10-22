@@ -29,12 +29,12 @@ Legenda: `[x]` feito · `[ ]` a fazer · **(bug)** comportamento atual diverge d
 
   **Pronto quando:** todas as linhas ✅ nos 5 terminais, ou com issue aberta para cada ❌.
 
-- [ ] **1.4 CI** — criar `.github/workflows/ci.yml` com matriz `macos-latest`, `windows-latest`, `ubuntu-latest`: `go vet ./...`, `go test ./...`, `go build .`.
-  **Pronto quando:** PR mostra os 3 checks verdes.
-- [ ] **1.5 Mensagem do ffmpeg por sistema** — `missingToolGuidance` (`main.go:807`) só cita brew/apt. Usar `runtime.GOOS` e sugerir `winget install Gyan.FFmpeg` no Windows. Teste em `main_test.go`.
-  **Pronto quando:** teste cobre os 3 sistemas.
-- [ ] **1.6 Áudio no Windows robusto** — caminho temporário é interpolado entre aspas simples no comando PowerShell (`main.go:1068`); usuário com `'` no nome quebra. Escapar `'` → `''`.
-  **Pronto quando:** teste unitário da string gerada.
+- [x] **1.4 CI** — `.github/workflows/ci.yml` com matriz `macos-latest`, `windows-latest`, `ubuntu-latest`: `go vet ./...`, `go test ./...`, `go build .` (feito em 22/10/2026).
+  **Pronto quando:** PR mostra os 3 checks verdes. _(validação final depende do PR rodar no GitHub Actions)_
+- [x] **1.5 Mensagem do ffmpeg por sistema** — `missingToolGuidance` delega a `missingToolGuidanceFor(tool, goos)` usando `runtime.GOOS`: `brew install ffmpeg` (darwin), `winget install Gyan.FFmpeg` (windows), `sudo apt install ffmpeg` (linux) e fallback para `ffmpeg.org` em outros. Teste `TestMissingToolGuidanceForFFmpeg` cobre os 3 sistemas + fallback (feito em 22/10/2026).
+  **Pronto quando:** teste cobre os 3 sistemas. ✅
+- [x] **1.6 Áudio no Windows robusto** — caminho temporário agora passa por `escapePowerShellSingleQuoted` (`'` → `''`) antes de ir ao comando PowerShell. Teste `TestEscapePowerShellSingleQuoted` cobre a string gerada (feito em 22/10/2026).
+  **Pronto quando:** teste unitário da string gerada. ✅
 
 ## Fase 2 — Corrigir o que o README marca como planejado
 
@@ -51,7 +51,7 @@ Legenda: `[x]` feito · `[ ]` a fazer · **(bug)** comportamento atual diverge d
   **Pronto quando:** dois exports do mesmo vídeo em terminais de tamanhos diferentes geram MP4 com a mesma resolução.
 - [ ] **2.6 Prompt do menu** — diz `FPS = 0->30`, mas aceita qualquer valor > 0. Ajustar texto em `askPlaybackAction` (`main.go:696`) e em `usage()`.
 - [ ] **2.7 Áudio no Linux** — tentar `ffplay -nodisp -autoexit`, depois `paplay`/`aplay`; silencioso se nenhum existir.
-- [ ] **2.8 Limpeza** — remover código só usado em testes (`centerASCIIFrame`, se 2.3 não o aproveitar) e atualizar o comentário de versão em `main.go:1` (diz v2.0.0; npm está em 2.0.5).
+- [ ] **2.8 Limpeza** — ~~atualizar o comentário de versão em `main.go:1`~~ feito em 22/10/2026 (agora v2.0.5). Falta: remover código só usado em testes (`centerASCIIFrame`, se 2.3 não o aproveitar).
 
 ## Fase 3 — Distribuição
 
